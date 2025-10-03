@@ -273,8 +273,8 @@
         const lp = leftPanel.getBoundingClientRect();
         const rs = scoreEl.getBoundingClientRect();
         const centerX = Math.round(lp.left + lp.width / 2);
-        // move toast higher: 1.5 inches above score
-        const top = Math.round(rs.top - (inchPx * 1.5));
+  // position toast directly above the score text (small vertical gap)
+  const top = Math.round(rs.top - 18); // ~18px above the top of the score element
         t.style.position = 'fixed';
         t.style.left = centerX + 'px';
         t.style.top = top + 'px';
@@ -391,6 +391,16 @@
     maybeShowUltimate();
     // check for shop unlock hints (show helpful popups when player reaches score milestones)
     maybeShowUnlockHints();
+    // hide the startup scan banner once player reaches 100 HACKER SCORE
+    try {
+      const b = document.getElementById('banner-cta');
+      if (b && state.hackerScore >= 100) {
+        // if this was the startup hint, hide it
+        if (b.textContent && b.textContent.toString().trim() === 'Try scanning!') {
+          hideUnlockBanner();
+        }
+      }
+    } catch(e) {}
   }
 
   // one-time hints when player reaches score thresholds for shop items
@@ -415,8 +425,8 @@
             "After you buy it, use: hack <domain_name> to assault the machines you\'ve discovered.\n\n" +
             "Lots of people can run scans. The BIG PLAYERS turn that noise into signal and cash. Get better, kid."
           );
-          // show top banner prompting purchase (green)
-          try { showUnlockBanner(`You can now purchase: ${hackDef.name} — open the Shop to buy`); } catch(e){}
+      // show top banner prompting purchase (green)
+      try { showUnlockBanner('Purchase the hack tool from the shop!'); } catch(e){}
       }
       // show connect hint when player can afford connect (but only after hack hint or if they already have hack)
       if (connDef && !_connectUnlockHintShown && state.hackerScore >= connDef.cost) {
@@ -432,7 +442,7 @@
               "Bigger files mean bigger points — pretty easy, right? But warning: while you\'re connected the FBI will be hot on your trail, getting more interested every second.\n\n" +
               "Also: hauling files draws major attention. Download wisely, N00b — don\'t get caught."
             );
-          try { showUnlockBanner(`You can now purchase: ${connDef.name} — open the Shop to buy`); } catch(e){}
+          try { showUnlockBanner('Purchase the connect tool form the shop!'); } catch(e){}
         }
       }
     } catch (e) {}
@@ -556,6 +566,11 @@
         try {
           const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
           if (hasHack) entries.splice(3, 0, {cmd: 'hack <ip|hostname>', desc: 'attempt to hack a scanned target'});
+        } catch(e) {}
+        // show touch-grass if purchased
+        try {
+          const hasTouch = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='touch_grass')) ? true : false;
+          if (hasTouch) entries.push({cmd: 'touch-grass', desc: 'Go outside, reduce multiplier by 10 and FBI interest by 20 (2s).'});
         } catch(e) {}
         entries.sort((a,b) => a.cmd.localeCompare(b.cmd));
       appendLine('Available commands:', 'muted');
@@ -739,6 +754,37 @@
       } else {
         startHack(args[0]);
       }
+      return;
+    } else if (name === 'touch-grass' || name === 'touch_grass') {
+      // gated: must purchase touch-grass from shop
+      const hasTouch = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='touch_grass')) ? true : false;
+      if (!hasTouch) { appendLine('Unknown command: ' + name, 'muted'); appendLine("Type 'help' to see available commands.", 'muted'); return; }
+      // Block input for 2 seconds and show a progress bar line
+      appendLine('You step outside...','muted');
+      const totalTicks = 2; // 2 seconds
+      const progressLineIndex = (() => { appendLine(`[${' '.repeat(30)}] 0%  touch-grass`); return outputEl.children.length - 1; })();
+      let secondsElapsed = 0;
+      // disable input by blurring and setting a flag on _game
+      try { window._game.modalOpen = true; inputEl.blur(); } catch(e){}
+      const tick = setInterval(() => {
+        secondsElapsed++;
+        const progress = Math.min(1, secondsElapsed / totalTicks);
+        const blocks = Math.floor(progress * 30);
+        const bar = '[' + '#'.repeat(blocks) + ' '.repeat(30-blocks) + `] ${Math.floor(progress*100)}%  touch-grass`;
+        const lineEl = outputEl.children[progressLineIndex];
+        if (lineEl) lineEl.textContent = bar;
+        if (secondsElapsed >= totalTicks) {
+          clearInterval(tick);
+          // apply effects: reduce multiplier by 10 (but allow it to go to min 1)
+          try { window._game = window._game || {}; window._game.lastMultiplier = Math.max(1, (window._game.lastMultiplier || 1) - 10); } catch(e){}
+          // reduce FBI interest by 20 (stronger effect) and show a green micro-toast at the FBI meter
+          state.fbiInterest = Math.max(0, (state.fbiInterest || 0) - 20);
+          try { showFbiToast('-20', { duration: 1200, type: 'success' }); } catch(e){}
+          renderMeters();
+          appendLine('You go outside and touch grass, makes you looks normal.', 'muted');
+          try { window._game.modalOpen = false; inputEl.focus(); } catch(e){}
+        }
+      }, 1000);
       return;
     } else if (name === 'list-owned') {
       window._game = window._game || {};
@@ -983,7 +1029,7 @@
 
       // each second, increase FBI by 1 and update progress
       let secondsElapsed = 0;
-      const tick = setInterval(() => {
+          const tick = setInterval(() => {
         secondsElapsed++;
   // downloads are riskier: generate 9x FBI interest per second (previously 3)
   if (!(window._game && window._game.modalOpen)) {
@@ -1009,12 +1055,13 @@
         }
         if (secondsElapsed >= totalTicks) {
           clearInterval(tick);
+          // clear active download marker
+          try { if (window._game && window._game._currentDownload && window._game._currentDownload.tick === tick) delete window._game._currentDownload; } catch(e){}
           // finalize download
           // award points: if White Hat is active, downloads give no hacker score; otherwise bytes * multiplier
           const bytes = Math.max(1, Math.min(1337, found2.size || 0));
-          const isWhiteDownload = (window._game && window._game.whiteHat) ? true : false;
           const multForDownload = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game.lastMultiplier || 1));
-          const bonus = isWhiteDownload ? 0 : Math.floor(bytes * multForDownload);
+          const bonus = Math.floor(bytes * multForDownload);
           state.hackerScore += bonus;
           lastHackerScore = Math.max(lastHackerScore, state.hackerScore);
       // persist the achieved multiplier so it carries to future hacks
@@ -1032,6 +1079,8 @@
           try { inputEl.focus(); } catch (e) {}
         }
       }, 1000);
+      // register current download so other commands (like exit) can cancel it
+      try { window._game = window._game || {}; window._game._currentDownload = { tick, progressLineIndex, name: found2.name }; } catch(e){}
       return;
     } else if (name === 'connect') {
       // gated: player must purchase unlock_connect before using connect
@@ -1069,13 +1118,30 @@
       appendLine(`MOTD: Welcome to ${host}`, 'muted');
       return;
     } else if (name === 'exit') {
+      // If a download is active, cancel it instead of exiting a connection
+      try {
+        if (window._game && window._game._currentDownload) {
+          const cur = window._game._currentDownload;
+          try { clearInterval(cur.tick); } catch(e){}
+          // update the progress line to show cancellation
+          try {
+            const idx = cur.progressLineIndex;
+            const lineEl = outputEl.children[idx];
+            if (lineEl) lineEl.textContent = `[ CANCELLED ]  ${cur.name}`;
+          } catch(e){}
+          delete window._game._currentDownload;
+          appendLine('Download cancelled.', 'muted');
+          try { inputEl.focus(); } catch(e){}
+          // continue to perform normal exit behavior (disconnect / return to main terminal)
+        }
+      } catch(e) {}
       if (connection) {
         appendLine('Disconnected from ' + connection.target, 'muted');
-      connection = null;
-      try {
-        const ps = document.querySelector('.prompt');
-        if (ps) ps.textContent = 'guest@l33t:~$';
-      } catch(e) {}
+        connection = null;
+        try {
+          const ps = document.querySelector('.prompt');
+          if (ps) ps.textContent = 'guest@l33t:~$';
+        } catch(e) {}
         return;
       }
     } else {
@@ -1124,9 +1190,8 @@
         // increase multiplier by 1 for each correct char (cumulative across hacks)
         hackState.multiplier = Math.max(1, hackState.multiplier + 1);
         // award points: if White Hat is active, apply the download multiplier to minigame characters
-      const mult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
-      const isWhite = (window._game && window._game.whiteHat) ? true : false;
-      const pts = Math.max(0, Math.floor(isWhite ? (1 * mult) : 1));
+  const mult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
+  const pts = 1;
       // micro-toast: small green +1 shoots out of the multiplier
   try { showMicroToast('+1', { type: 'success', duration: 1400, direction: 'right' }); } catch(e){}
       // immediately apply points to the real hacker score so the on-screen score matches state
@@ -1159,9 +1224,9 @@
     } catch(e){}
     hackState.currentPoints = Math.max(0, hackState.currentPoints || 0);
       updateComboUI();
-  // increase FBI meter per missed character (reduced penalty to make minigame easier)
-  state.fbiInterest = Math.min(100, state.fbiInterest + 12);
-  try { showFbiToast('+12', { duration: 1300 }); } catch(e){}
+  // increase FBI meter per missed character (smaller penalty — +5 now)
+  state.fbiInterest = Math.min(100, state.fbiInterest + 5);
+  try { showFbiToast('+5', { duration: 1000 }); } catch(e){}
   renderMeters();
       if (state.fbiInterest >= 100) {
         handleFbiCapture('during hack minigame');
@@ -1223,11 +1288,11 @@
 
   // Upgrades available in the shop
   const UPGRADE_LIST = [
-  { id: 'unlock_hack', name: 'Hack Tool', cost: 100, desc: 'Unlock the hack command: hack <ip|hostname>.' },
-  { id: 'unlock_connect', name: 'Remote Connect', cost: 1000, desc: 'Unlock the connect command to connect to hacked machines. Requires Hack Tool.' },
-    { id: 'ghost', name: 'Ghost', cost: 5000, desc: 'Become a ghost in the network. Each purchase increases FBI decay by +1/sec (stacking); price doubles each purchase.' },
-    { id: 'bandwidth', name: 'Bandwidth', cost: 10000, desc: 'Speed up downloads. Each purchase reduces download time by 1s (stacking); price doubles each purchase.' },
-    { id: 'whitehat', name: 'White Hat', cost: 7500, desc: 'Switch to white-hat mode: downloads give no HACKER SCORE, but the download multiplier is applied to successful characters during the hack minigame.' }
+  { id: 'unlock_hack', name: 'Hack Tool', cost: 100, desc: 'Unlocks the hack command.' },
+  { id: 'unlock_connect', name: 'Connect Tool', cost: 1000, desc: 'Unlocks the connect command.' },
+  { id: 'touch_grass', name: 'Touch Grass', cost: 5000, desc: 'Unlocks the touch-grass command.' },
+    { id: 'ghost', name: 'Ghost', cost: 5000, desc: 'Become a ghost. The FBI has trouble tracking you and their interest in you decreases faster.' },
+    { id: 'bandwidth', name: 'Bandwidth', cost: 10000, desc: 'More internet, faster downloads.' }
   ];
 
   // centralized purchase application helper (used by UI)
@@ -1242,7 +1307,7 @@
     // special-case: unlock_connect requires unlock_hack dependency
     if (up.id === 'unlock_connect') {
       const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
-      if (!hasHack) { appendLine('You must purchase the Hack Tool before Remote Connect.', 'muted'); return false; }
+  if (!hasHack) { appendLine('You must purchase the Hack Tool before Connect Tool.', 'muted'); return false; }
       window._game.upgrades.unlock_connect = true;
     }
     if (up.id === 'ghost') {
@@ -1258,11 +1323,10 @@
       const level = window._game.bandwidthLevel;
       // store next price so shop can display it (double each purchase)
       window._game.nextBandwidthCost = (window._game.nextBandwidthCost || up.cost) * 2;
-    }
-    else if (up.id === 'whitehat') {
+    } else if (up.id === 'touch_grass') {
+      // unlock the touch-grass command (single purchase)
       window._game.upgrades = window._game.upgrades || {};
-      window._game.whiteHat = true;
-      // White Hat is single-purchase; no repeatable behavior
+      window._game.touchGrass = true;
     }
     appendLine(`Purchased: ${up.name} (-${up.cost} pts)`, 'muted');
   try { showToast(`-${up.cost} HACKER SCORE for ${up.name}`, { type: 'danger', duration: 5000 }); } catch(e){}
@@ -1295,43 +1359,83 @@
       container.innerHTML = '';
       window._game = window._game || {};
       const purchases = window._game.purchases || [];
+      // Build a quick lookup of purchased counts
       const upgrades = {};
       purchases.forEach(p => { upgrades[p.id] = (upgrades[p.id] || 0) + 1; });
 
-      // hack badge
-      if (upgrades['unlock_hack']) {
-        const b = document.createElement('div'); b.className = 'badge hack'; b.title = 'Hack Tool'; b.innerHTML = `<span class="label">HACK</span>`;
-        container.appendChild(b);
-      }
-      // connect
-      if (upgrades['unlock_connect']) {
-        const b = document.createElement('div'); b.className = 'badge connect'; b.title = 'Remote Connect'; b.innerHTML = `<span class="label">CON</span>`;
-        container.appendChild(b);
-      }
-      // ghost (repeatable)
-      const ghostLevel = window._game.ghostLevel || 0;
-      if (ghostLevel > 0) {
-        const b = document.createElement('div'); b.className = 'badge ghost'; b.title = `Ghost x${ghostLevel}`;
-        b.innerHTML = `<span class="label">GHO</span>`;
-        const c = document.createElement('div'); c.className = 'count'; c.textContent = ghostLevel;
-        b.appendChild(c);
-        container.appendChild(b);
-      }
-      // bandwidth (repeatable)
-      const bwLevel = window._game.bandwidthLevel || 0;
-      if (bwLevel > 0) {
-        const b = document.createElement('div'); b.className = 'badge bandwidth'; b.title = `Bandwidth level ${bwLevel} (-${bwLevel}s)`;
-        b.innerHTML = `<span class="label">BW</span>`;
-        const c = document.createElement('div'); c.className = 'count'; c.textContent = bwLevel;
-        b.appendChild(c);
-        container.appendChild(b);
-      }
-      // white hat (single purchase)
-      const isWhite = (window._game && (window._game.whiteHat || (window._game.purchases && window._game.purchases.find(p=>p.id==='whitehat')))) ? true : false;
-      if (isWhite) {
-        const b = document.createElement('div'); b.className = 'badge whitehat'; b.title = 'White Hat Mode'; b.innerHTML = `<span class="label">WH</span>`;
-        container.appendChild(b);
-      }
+      // Always render all available upgrades as badges (greyed when not purchased)
+      UPGRADE_LIST.forEach((u) => {
+        try {
+          const ownedCount = upgrades[u.id] || 0;
+          const isRepeatable = (u.id === 'bandwidth' || u.id === 'ghost');
+          const isOwned = isRepeatable ? (ownedCount > 0) : ((window._game && (window._game[u.id] || window._game.purchases && window._game.purchases.find(p=>p.id===u.id))) ? true : ownedCount > 0);
+          // map id to a badge class
+          const idToClass = {
+            unlock_hack: 'hack',
+            unlock_connect: 'connect',
+            ghost: 'ghost',
+            bandwidth: 'bandwidth',
+            touch_grass: 'touchgrass'
+          };
+          const cls = idToClass[u.id] || 'badge';
+          const b = document.createElement('div');
+          // owned badges get 'owned', others are 'locked'
+          b.className = 'badge ' + cls + (isOwned ? ' owned' : ' locked');
+          b.setAttribute('data-id', u.id);
+          b.title = u.name;
+          // show full upgrade name on the badge
+          b.innerHTML = `<span class="label">${u.name}</span>`;
+          // if repeatable and owned, show count
+          if (isRepeatable && ownedCount > 0) {
+            const c = document.createElement('div'); c.className = 'count'; c.textContent = ownedCount; b.appendChild(c);
+          }
+          // determine affordability and toggle class
+          try {
+            const affordable = (typeof state.hackerScore === 'number' && state.hackerScore >= (u.cost || 0));
+            if (affordable && !isOwned) b.classList.add('affordable');
+            else b.classList.remove('affordable');
+          } catch(e){}
+
+          // hover tooltip: create centered tooltip and ensure it is removed when mouse leaves badge or tooltip
+          b.addEventListener('mouseenter', (ev) => {
+            try {
+              // remove any existing tooltip first
+              try { const old = document.getElementById('badge-tooltip'); if (old && old.parentNode) old.parentNode.removeChild(old); } catch(e){}
+              const t = document.createElement('div'); t.className = 'badge-tooltip centered';
+              t.id = 'badge-tooltip';
+              t.innerHTML = `<strong>${u.name}</strong><div style="font-size:12px;margin-top:6px">${u.desc}</div><div style="margin-top:8px;color:#bfffd6">Cost: ${u.cost} pts</div>`;
+              document.body.appendChild(t);
+              t.style.position = 'fixed';
+              t.style.top = '60px';
+              // allow tooltip to remove itself when the pointer leaves it
+              let overTooltip = false;
+              const clearTooltip = () => { try { const ex = document.getElementById('badge-tooltip'); if (ex && ex.parentNode) ex.parentNode.removeChild(ex); } catch(e){} };
+              t.addEventListener('mouseenter', () => { overTooltip = true; });
+              t.addEventListener('mouseleave', () => { overTooltip = false; clearTooltip(); });
+              b.addEventListener('mouseleave', () => { setTimeout(() => { if (!overTooltip) clearTooltip(); }, 80); }, { once: true });
+            } catch(e) {}
+          });
+          // click to purchase if not owned (or allow purchase of repeatable)
+          b.addEventListener('click', () => {
+            try {
+              // if already owned and not repeatable, do nothing
+              if (!isRepeatable && isOwned) return;
+              // prepare purchase object
+              let upObj = UPGRADE_LIST.find(x => x.id === u.id) || u;
+              if (isRepeatable) {
+                upObj = Object.assign({}, upObj);
+                if (u.id === 'bandwidth') upObj.cost = (window._game && window._game.nextBandwidthCost) ? window._game.nextBandwidthCost : upObj.cost;
+                if (u.id === 'ghost') upObj.cost = (window._game && window._game.nextGhostCost) ? window._game.nextGhostCost : upObj.cost;
+              }
+              const ok = applyPurchase(upObj);
+              if (ok) {
+                try { renderUpgradeBadges(); } catch(e){}
+              }
+            } catch(e) {}
+          });
+          container.appendChild(b);
+        } catch(e) {}
+      });
     } catch(e) { console.debug('renderUpgradeBadges err', e); }
   }
 
@@ -1534,6 +1638,11 @@
           const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
           if (hasHack && !available.includes('hack')) available.push('hack');
           if (hasConnect && !available.includes('connect')) available.push('connect');
+          // enable tab-complete for touch-grass when purchased
+          try {
+            const hasTouch = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='touch_grass')) ? true : false;
+            if (hasTouch && !available.includes('touch-grass')) available.push('touch-grass');
+          } catch(e) {}
         } catch(e) {}
       }
       const matches = available.filter(c => c.startsWith(token.toLowerCase()));
@@ -2451,6 +2560,21 @@
     } catch (e) {}
   }, 800);
 
+  // Ghost passive drain: for each Ghost level, reduce FBI interest by that many points per second
+  // This only applies while the player is in the main terminal (not connected) and not mid-hack
+  setInterval(() => {
+    try {
+      if (window._game && window._game._gameOver) return;
+      const ghostLevel = (window._game && window._game.ghostLevel) ? window._game.ghostLevel : 0;
+      if (!ghostLevel) return;
+      if (connection || hackState) return; // only while in main terminal and not hacking
+      if (typeof state.fbiInterest === 'number' && state.fbiInterest > 0) {
+        state.fbiInterest = Math.max(0, state.fbiInterest - ghostLevel);
+        try { renderMeters(); } catch(e){}
+      }
+    } catch (e) {}
+  }, 1000);
+
   // While connected to a remote machine, FBI interest slowly increases by 1 per second.
   setInterval(() => {
     try {
@@ -2634,6 +2758,8 @@
   appendLine('Super l337 Hacker - Retro Simulator', 'muted');
   appendLine('Type \"help\" to see available commands.', 'muted');
   renderMeters();
+  try { showUnlockBanner('Try scanning!'); } catch(e) {}
+  try { renderUpgradeBadges(); } catch(e){}
 
   // ensure the input is focused on initial load so player can start typing immediately
   try { inputEl.focus(); } catch(e){}

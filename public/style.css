@@ -44,7 +44,8 @@ body{
 }
 
 /* Pin left panel to avoid overlap when multiplier grows */
-#left-panel{ position:fixed; left:18px; top:18px; width:240px; z-index:1000; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; }
+/* move left panel content lower to visually separate header and store */
+#left-panel{ position:fixed; left:18px; top:120px; width:240px; z-index:1000; padding:36px 12px 12px 12px; box-sizing:border-box; display:flex; flex-direction:column; }
 
 /* push the main area right so the pinned left-panel doesn't overlap the terminal */
 .main-area{ margin-left:300px; }
@@ -60,6 +61,21 @@ body{
   font-size:14px;
   letter-spacing:2px;
   color:var(--text);
+}
+
+/* small store title above the upgrade badges */
+.store-title{
+  font-family: var(--mono);
+  font-weight:900;
+  color:#eaffd6;
+  font-size:20px; /* larger headline */
+  text-align:center;
+  margin-top:72px; /* move much lower from the score */
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  text-shadow:0 6px 18px rgba(0,255,140,0.04);
+  padding-bottom:14px;
+  border-bottom:1px solid rgba(255,255,255,0.03);
 }
 
 /* make the HACKER SCORE title pop with brighter green */
@@ -122,54 +138,84 @@ body{
   justify-content:center;
   z-index:9999;
 }
+/* we no longer use the shop button; keep markup but hide visually */
+.shop-button{ display:none !important; }
 .shop-button:hover{ box-shadow:0 12px 28px rgba(0,255,120,0.09) }
+
+/* locked badge styling */
+.badge.locked{ filter:grayscale(90%) opacity(0.36); cursor:pointer; box-shadow:none; border:1px solid rgba(255,255,255,0.02); }
+.badge.locked .label{ color:rgba(4,48,40,0.35) }
+
+/* when affordable but not owned, make the badge solid grey (no transparency) */
+
+/* owned badges are green */
+.badge.owned{ background:linear-gradient(180deg,#dfffe8,#b7ffd6); border:1px solid rgba(0,200,120,0.18); box-shadow:0 12px 36px rgba(0,255,120,0.08); }
+
+/* tooltip for badges */
+.badge-tooltip{
+  z-index:1000001;
+  background:linear-gradient(180deg, rgba(4,16,24,0.96), rgba(6,28,36,0.96));
+  color:var(--text);
+  border:1px solid rgba(0,255,140,0.12);
+  padding:14px 16px; border-radius:8px; width:320px; text-align:center; font-size:15px; line-height:1.4; box-shadow:0 20px 80px rgba(0,0,0,0.85), 0 0 28px rgba(0,255,140,0.06) inset;
+  transform-origin:50% 0%;
+  transition: transform 220ms cubic-bezier(.2,.9,.3,1), opacity 220ms ease;
+  opacity:0.98;
+}
+
+/* center the tooltip horizontally on the page when shown */
+.badge-tooltip.centered{ left:50% !important; transform:translateX(-50%) translateY(6px) !important; }
+
+/* subtle neon pulse for emphasis when visible */
+.badge-tooltip::after{
+  content:'';
+  position:absolute;
+  left:6px; right:6px; top:6px; bottom:6px;
+  border-radius:6px;
+  pointer-events:none;
+  box-shadow:0 0 28px rgba(0,255,140,0.04);
+}
+
+/* when affordable, show solid grey appearance (no transparency) */
+.badge.affordable{ filter:none; opacity:1; background:linear-gradient(180deg,#dfe0e3,#c9c9cc); border:1px solid rgba(120,120,120,0.12); box-shadow:0 8px 24px rgba(0,0,0,0.45); }
 
 /* shop open state: turn button red and change border to indicate active/close action */
 .shop-button.shop-open{ background:linear-gradient(180deg,#5b1414,#8b2b2b); color:#fff; border:1px solid rgba(255,80,80,0.18) }
 
-/* Upgrade badges HUD (top-left cluster) */
 .upgrade-badges{
-  /* flow inside the left panel below the score; wrap into rows (3 per row visually)
-     left-panel width ~240px; badges sized to fit three across with gaps */
-  position:static;
+  /* stack badges vertically in the left panel */
   display:flex;
-  flex-direction:row;
-  flex-wrap:wrap;
-  gap:8px;
+  flex-direction:column;
+  gap:12px;
+  align-items:stretch;
+  justify-content:flex-start;
+  margin-top:8px; /* sit directly underneath the store title */
   z-index:10000;
-  margin-top:18px;
-  justify-content:center;
-  max-width:220px;
 }
 .badge{
-  width:64px;
-  height:64px;
-  border-radius:8px;
+  width:200px;
+  height:48px;
+  border-radius:12px;
   display:flex;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
+  gap:12px;
+  padding:8px 12px;
   font-family:var(--mono);
-  font-size:12px;
+  font-size:13px;
   color:#041018;
   background:linear-gradient(180deg,#eaffef,#bfffd6);
   box-shadow:0 8px 30px rgba(0,255,140,0.06), inset 0 -6px 14px rgba(0,0,0,0.06);
   border:1px solid rgba(0,255,140,0.12);
-  padding:6px;
   position:relative;
 }
-.badge .label{ font-weight:800; color:#043; text-transform:none; }
+.badge .label{ font-weight:800; color:#043; text-transform:none; margin-left:6px }
 .badge .count{
   position:absolute; right:-6px; top:-6px; background:#ffef9f; color:#222; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; border:1px solid rgba(0,0,0,0.12);
 }
-/* specific badge variants */
-.badge.hack{ background:linear-gradient(180deg,#ffd36b,#ffb36b); color:#200; }
-.badge.connect{ background:linear-gradient(180deg,#9fd6ff,#6fb8ff); color:#042; }
-.badge.fasthands{ background:linear-gradient(180deg,#d9b3ff,#b78bff); color:#041018; }
-.badge.withoutatrace{ background:linear-gradient(180deg,#cfe6b3,#9fe08a); color:#041018; }
-.badge.bandwidth{ background:linear-gradient(180deg,#bdefff,#7fdfff); color:#041018; }
-
-/* White Hat badge: single-level purchase */
-.badge.whitehat{ background:linear-gradient(180deg,#f0f8ff,#cfefff); color:#002b2b; box-shadow:0 8px 30px rgba(160,240,255,0.06); border:1px solid rgba(0,160,200,0.12); }
+/* specific badge variants removed to enforce unified grey (unpurchased) -> green (owned) styling
+  Previously individual colored variants (e.g. .badge.hack/.badge.connect) were defined here.
+  They were removed so .badge.affordable and .badge.owned control visual state consistently. */
 
 /* overlay used to show a larger multiplier above the terminal (clamped display) */
 .score-mult-overlay{ position:fixed; left:50%; top:12vh; transform:translateX(-50%); z-index:99999; font-family:var(--mono); font-weight:900; color:var(--accent); text-shadow:0 6px 20px rgba(0,255,160,0.06); }
