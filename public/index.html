@@ -7,11 +7,14 @@
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
+    <canvas id="matrix-canvas" aria-hidden="true"></canvas>
     <div id="app">
       <div id="left-panel" class="side-panel">
         <h2>HACKER SCORE</h2>
         <div id="score-big" class="score-big">0</div>
     <div id="score-mult" class="score-mult">Multiplier: x1</div>
+    <div id="upgrade-badges" class="upgrade-badges" aria-hidden="false"></div>
+    <button id="shop-button" class="shop-button" title="Open Shop">Shop</button>
       </div>
 
       <div id="main" class="main-area">
@@ -38,6 +41,7 @@
       </div>
     </div>
 
+  <!-- DEBUG: beat button removed -->
     <script src="game.js"></script>
   </body>
 </html>

@@ -6,6 +6,8 @@
   --danger:#ff5c5c;
   --mono: 'Courier New', Courier, monospace;
 }
+/* Import sci-fi fonts for multiplier and rank (fallback to system if unavailable) */
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Audiowide&display=swap');
 html,body,#app{height:100%;}
 body{
   margin:0;
@@ -22,17 +24,46 @@ body{
   padding:24px;
   box-sizing:border-box;
 }
+
+/* Matrix background canvas sits behind everything */
+#matrix-canvas{
+  position:fixed;
+  inset:0;
+  z-index:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  background:linear-gradient(180deg,#001005 0%, #001813 100%);
+}
+/* ensure app sits above the matrix canvas */
+#app{ position:relative; z-index:1 }
 .side-panel{
   width:220px;
   text-align:center;
   padding:12px; /* add padding around the meter area */
 }
+
+/* Pin left panel to avoid overlap when multiplier grows */
+#left-panel{ position:fixed; left:18px; top:18px; width:240px; z-index:1000; padding:12px; box-sizing:border-box; display:flex; flex-direction:column; }
+
+/* push the main area right so the pinned left-panel doesn't overlap the terminal */
+.main-area{ margin-left:300px; }
+
+/* Center the score area at the top of the left panel */
+#left-panel .side-panel { display:flex; flex-direction:column; align-items:center; }
+#score-big, #score-mult { text-align:center; margin-left:0; }
+
+/* Center badges vertically inside left panel */
+.upgrade-badges{ position:relative; left:0; top:0; display:flex; flex-direction:row; gap:8px; justify-content:center; align-items:center; margin-top:auto; margin-bottom:auto; }
 .side-panel h2{
   margin:0 0 12px 0;
   font-size:14px;
   letter-spacing:2px;
   color:var(--text);
 }
+
+/* make the HACKER SCORE title pop with brighter green */
+#left-panel h2{ color:#7CFFB8; text-shadow:0 6px 18px rgba(0,255,140,0.06); font-weight:900 }
 .meter{
   height:56vh;
   background:rgba(255,255,255,0.03);
@@ -50,17 +81,112 @@ body{
   background:linear-gradient(180deg,var(--accent), #00a86b);
   transition:height 400ms ease;
 }
-.meter-fill.fbi{background:linear-gradient(180deg,#ffb3b3,var(--danger));}
+/* FBI meter: green at bottom, orange mid, red at top (traffic-light feel) */
+.meter-fill.fbi{ background: #8b0000; /* solid blood red */ }
 .meter-label{margin-top:8px;font-size:13px;color:var(--text)}
+
+/* stronger black outline for the FBI meter to improve visibility */
+#right-panel .meter{
+  border-radius:10px;
+  border:2px solid rgba(0,0,0,0.95);
+  box-shadow: inset 0 0 0 4px rgba(0,0,0,0.95), 0 8px 20px rgba(0,0,0,0.35);
+}
 
 /* left panel numeric score styles */
 .score-big{
   font-size:48px;
   font-weight:700;
-  color:var(--accent);
+  color:#7CFFB8; /* brighter neon green */
   margin:8px 0;
 }
-.score-mult{font-size:16px;color:#9fffd0;margin-bottom:6px}
+.score-mult{font-size:16px;color:#9fffd0;margin-bottom:6px; font-weight:800; text-shadow:0 6px 20px rgba(0,255,140,0.08)}
+
+/* shop button in the left panel */
+.shop-button{
+  /* make the shop button large and fixed near the bottom-left of the viewport */
+  position:fixed;
+  left:20px;
+  bottom:20px;
+  width:180px;
+  height:56px;
+  background:linear-gradient(180deg,#043a29,#076b46);
+  color:var(--accent);
+  border:1px solid rgba(0,255,140,0.12);
+  padding:12px 14px;
+  border-radius:10px;
+  cursor:pointer;
+  font-family:var(--mono);
+  font-size:16px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  z-index:9999;
+}
+.shop-button:hover{ box-shadow:0 12px 28px rgba(0,255,120,0.09) }
+
+/* shop open state: turn button red and change border to indicate active/close action */
+.shop-button.shop-open{ background:linear-gradient(180deg,#5b1414,#8b2b2b); color:#fff; border:1px solid rgba(255,80,80,0.18) }
+
+/* Upgrade badges HUD (top-left cluster) */
+.upgrade-badges{
+  /* flow inside the left panel below the score; wrap into rows (3 per row visually)
+     left-panel width ~240px; badges sized to fit three across with gaps */
+  position:static;
+  display:flex;
+  flex-direction:row;
+  flex-wrap:wrap;
+  gap:8px;
+  z-index:10000;
+  margin-top:18px;
+  justify-content:center;
+  max-width:220px;
+}
+.badge{
+  width:64px;
+  height:64px;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-family:var(--mono);
+  font-size:12px;
+  color:#041018;
+  background:linear-gradient(180deg,#eaffef,#bfffd6);
+  box-shadow:0 8px 30px rgba(0,255,140,0.06), inset 0 -6px 14px rgba(0,0,0,0.06);
+  border:1px solid rgba(0,255,140,0.12);
+  padding:6px;
+  position:relative;
+}
+.badge .label{ font-weight:800; color:#043; text-transform:none; }
+.badge .count{
+  position:absolute; right:-6px; top:-6px; background:#ffef9f; color:#222; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; border:1px solid rgba(0,0,0,0.12);
+}
+/* specific badge variants */
+.badge.hack{ background:linear-gradient(180deg,#ffd36b,#ffb36b); color:#200; }
+.badge.connect{ background:linear-gradient(180deg,#9fd6ff,#6fb8ff); color:#042; }
+.badge.fasthands{ background:linear-gradient(180deg,#d9b3ff,#b78bff); color:#041018; }
+.badge.withoutatrace{ background:linear-gradient(180deg,#cfe6b3,#9fe08a); color:#041018; }
+.badge.bandwidth{ background:linear-gradient(180deg,#bdefff,#7fdfff); color:#041018; }
+
+/* White Hat badge: single-level purchase */
+.badge.whitehat{ background:linear-gradient(180deg,#f0f8ff,#cfefff); color:#002b2b; box-shadow:0 8px 30px rgba(160,240,255,0.06); border:1px solid rgba(0,160,200,0.12); }
+
+/* overlay used to show a larger multiplier above the terminal (clamped display) */
+.score-mult-overlay{ position:fixed; left:50%; top:12vh; transform:translateX(-50%); z-index:99999; font-family:var(--mono); font-weight:900; color:var(--accent); text-shadow:0 6px 20px rgba(0,255,160,0.06); }
+
+/* modal shop UI */
+.shop-modal{ position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); z-index:999999; background:#041018; color:var(--text); border:1px solid rgba(255,255,255,0.04); padding:18px; border-radius:8px; width:420px; box-shadow:0 16px 64px rgba(0,0,0,0.9); }
+.shop-modal h3{ margin:0 0 12px 0; font-size:18px; color:var(--accent) }
+.shop-list{ max-height:320px; overflow:auto; margin-bottom:12px }
+.shop-item{ padding:8px; border-radius:6px; display:flex; justify-content:space-between; align-items:center; gap:8px; border:1px solid rgba(255,255,255,0.02); margin-bottom:8px }
+.shop-item .desc{ font-size:13px; color:#bfffd6 }
+.shop-buy{ background:linear-gradient(90deg,#0e6b3f,#00a86b); color:#fff; border-radius:6px; padding:6px 10px; border:0; cursor:pointer }
+.shop-close{ background:transparent; color:#9fffd0; border:0; padding:6px 8px; cursor:pointer }
+
+/* purchased entry styling */
+.shop-item.purchased{ background:linear-gradient(180deg,#2b0b0b,#3d1414); border:1px solid rgba(255,80,80,0.06); color:#ffd6d6 }
+.shop-item.purchased .desc{ color:#ffd6d6 }
+.shop-item.purchased .shop-buy{ background:linear-gradient(90deg,#7b1515,#a22b2b); }
 
 .main-area{
   flex:1 1 800px;
@@ -132,21 +258,81 @@ body{
   display:none;
   width:100%;
   padding:10px 12px;
-  background:linear-gradient(90deg,#2a0000,#440000);
-  color:#ffb3b3;
+  color:#fff;
   font-weight:900;
   font-size:18px;
   text-align:center;
-  border-bottom:1px solid rgba(255,100,100,0.06);
+  border-bottom:1px solid rgba(0,0,0,0.06);
   box-shadow:0 6px 18px rgba(0,0,0,0.4);
   letter-spacing:1px;
+}
+
+/* green unlock banner (used for Hack / Connect availability) */
+.banner-cta.unlock{
+  display:block;
+  background: linear-gradient(90deg,#086b3a,#0ba85a);
+  color: #fff;
+  border-bottom:1px solid rgba(0,255,140,0.06);
+}
+
+/* FBI banner variant (red) */
+.banner-cta.fbi{
+  display:block;
+  background: linear-gradient(90deg,#2a0000,#440000);
+  color:#ffb3b3;
+  border-bottom:1px solid rgba(255,100,100,0.06);
 }
 .minigame.visible{display:block}
 .minigame .char{padding:0 2px}
 .minigame .char.good{color:#00FF3A; text-shadow:0 0 10px rgba(0,255,58,0.6); font-weight:700}
 .minigame .char.bad{color:#ff7b7b; text-shadow:0 0 6px rgba(255,120,120,0.18); animation:char-flash 220ms ease-in-out}
-.minigame .char.space{display:inline-block; min-width:8px; text-align:center; color:rgba(255,255,255,0.08)}
-.minigame .char.space::after{content:'·'; opacity:0.65; color:#9effc9}
+.minigame .char.space{
+  display:inline-flex; /* use flex so the glyph can be perfectly centered */
+  align-items:center;
+  justify-content:center;
+  min-width:20px; /* larger so space visually sits between words */
+  padding:0 2px;
+  text-align:center;
+  color:rgba(255,255,255,0.12);
+  font-weight:700;
+}
+.minigame .char.space::after{
+  content:'•';
+  opacity:0.95;
+  color:#9effc9; /* default soft green */
+  font-size:120%;
+  display:block;
+  line-height:1;
+}
+/* Make the space glyph respond to correct/incorrect states like other chars */
+.minigame .char.space.good::after{
+  color:#00FF3A;
+  text-shadow:0 0 10px rgba(0,255,58,0.6);
+}
+.minigame .char.space.bad::after{
+  color:#ff7b7b;
+  text-shadow:0 0 6px rgba(255,120,120,0.18);
+  animation:char-flash 220ms ease-in-out;
+}
+
+/* indicate the next character with a thin underbar */
+.minigame .char.next{
+  position:relative;
+}
+.minigame .char.next::after{
+  content:'';
+  position:absolute;
+  left:6%;
+  right:6%;
+  bottom:-4px;
+  height:3px;
+  background:var(--accent);
+  border-radius:2px;
+  box-shadow:0 0 8px rgba(0,255,140,0.45);
+  opacity:0.95;
+}
+.minigame .char.next.good::after{ background:#00FF3A; box-shadow:0 0 12px rgba(0,255,58,0.6); }
+.minigame .char.next.bad::after{ background:#ff7b7b; box-shadow:0 0 8px rgba(255,120,120,0.28); }
 @keyframes char-flash{0%{transform:scale(1)}50%{transform:scale(1.05)}100%{transform:scale(1)}}
 .terminal::after{
   /* subtle scanlines overlay */
@@ -211,6 +397,43 @@ body{
   animation: text-shake 260ms ease-in-out;
 }
 
+/* multiplier shake animation (duration driven by inline style set in JS) */
+@keyframes mult-shake {
+  0% { transform: translateX(0) }
+  20% { transform: translateX(-2px) }
+  40% { transform: translateX(2px) }
+  60% { transform: translateX(-2px) }
+  80% { transform: translateX(2px) }
+  100% { transform: translateX(0) }
+}
+
+@keyframes mult-rotate {
+  0% { transform: rotate(-6deg) }
+  50% { transform: rotate(6deg) }
+  100% { transform: rotate(-6deg) }
+}
+
+.score-mult{ display:inline-block; transform-origin:center center; font-family: 'Orbitron', var(--mono); font-weight:700; color:#bfffd6; }
+
+/* player rank styling - sleek, l337 look */
+#player-rank { font-family: 'Audiowide', var(--mono); letter-spacing:2px; color:var(--accent); text-transform:uppercase; display:inline-block; transform-origin:center center; transition: text-shadow 300ms ease, transform 300ms ease, font-size 300ms ease; }
+
+/* rank glow and wobble animations */
+@keyframes rank-shake {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-1px); }
+  40% { transform: translateX(2px); }
+  60% { transform: translateX(-1px); }
+  80% { transform: translateX(1px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes rank-rotate {
+  0% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+  100% { transform: rotate(-3deg); }
+}
+
 .line{white-space:pre-wrap; font-size:inherit; font-weight:inherit}
 .muted{color:#7f8b8a;font-size:14px}
 
@@ -221,41 +444,152 @@ body{
 }
 
 /* FBI delta indicator (right-side, casino style) */
-.fbi-delta-holder{
+/* right-side delta removed: the meter-origin micro-toast now indicates FBI increases */
+
+/* floating toast that appears above the input line and drifts upward while fading */
+.floating-toast{
   position:fixed;
-  right:18px;
+  left:50%;
   top:50%;
-  transform:translateY(-50%);
+  transform:translate(-50%, -50%);
+  background:linear-gradient(90deg,#06261a,#0b3b2a);
+  color:var(--accent);
+  padding:10px 16px;
+  border-radius:10px;
+  font-family:var(--mono);
+  font-size:16px;
+  z-index:9999999;
+  box-shadow:0 18px 56px rgba(0,0,0,0.7), inset 0 -6px 18px rgba(0,255,120,0.03);
+  opacity:1;
   pointer-events:none;
-  z-index:99999;
+  max-width:80%;
   display:flex;
-  flex-direction:column;
-  gap:10px;
-  align-items:flex-end;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
 }
-.fbi-delta {
-  background: linear-gradient(180deg,#ff6b6b,#b30000);
-  color:#fff;
-  font-weight:900;
+
+.floating-toast.danger{
+  background:linear-gradient(90deg,#3b0b0b,#5a0b0b);
+  color:#ffd6d6;
+  box-shadow:0 18px 56px rgba(0,0,0,0.7), inset 0 -6px 18px rgba(255,80,80,0.03);
+}
+
+/* sleek score toast variant: l337 style, slightly larger, subtle glass effect and no fade (JS handles removal) */
+.floating-toast.score-toast{
+  background:linear-gradient(90deg, rgba(10,60,30,0.96), rgba(6,110,60,0.96));
+  color:#eaffef; /* brighter green text */
+  font-weight:800;
+  letter-spacing:1px;
   padding:12px 20px;
+  border-radius:12px;
+  border:1px solid rgba(160,255,180,0.08);
+  box-shadow: 0 28px 96px rgba(0,0,0,0.9), inset 0 -10px 36px rgba(0,255,140,0.06), 0 8px 28px rgba(40,255,140,0.08);
+  backdrop-filter: blur(6px) saturate(140%);
+  transform: translate(-50%,-50%) scale(1.02);
+  font-family: 'Orbitron', var(--mono);
+  font-size:18px;
+}
+
+.floating-toast.score-toast{ max-width:260px; padding:10px 14px; }
+.score-toast-inner{ display:inline-block; transform:translateZ(0); }
+/* no wiggle: keep the inner text steady while the element rises */
+.score-toast-inner{ display:inline-flex; align-items:center; justify-content:center; }
+
+/* rise-only: use the existing score-rise keyframes but do not apply wiggle */
+.rise-only{
+  animation: score-rise var(--toast-dur, 5200ms) linear forwards;
+}
+
+/* when a score toast is marked danger, force the red/danger styling to override the green */
+.floating-toast.score-toast.danger{
+  background:linear-gradient(90deg,#3b0b0b,#5a0b0b);
+  color:#ffd6d6;
+  box-shadow: 0 28px 96px rgba(0,0,0,0.9), inset 0 -10px 36px rgba(255,80,80,0.06), 0 8px 28px rgba(160,90,90,0.08);
+  border:1px solid rgba(255,80,80,0.08);
+}
+
+/* Make score-needed toasts feel more 'l337' with a subtle glow */
+.floating-toast.score-toast::after{
+  content:'';
+  position:absolute;
+  inset:0;
+  border-radius:12px;
+  box-shadow:0 0 18px rgba(0,255,140,0.06), 0 0 44px rgba(0,255,140,0.03) inset;
+  pointer-events:none;
+}
+
+/* rise + wiggle animation for score toasts: slow upward drift, subtle left-right wiggle, full fade at top */
+.rise-wiggle{
+  /* animation uses the --toast-dur inline variable set by JS (fallback 5200ms) */
+  animation: score-rise var(--toast-dur, 5200ms) linear forwards, score-wiggle 900ms ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes score-rise {
+  0% { transform: translate(-50%, -50%) translateX(var(--score-dx, 0px)) translateY(0px); opacity: 1; }
+  40% { transform: translate(-50%, -50%) translateX(calc(var(--score-dx, 0px) * 0.45)) translateY(-18vh); opacity: 0.98; }
+  70% { transform: translate(-50%, -50%) translateX(calc(var(--score-dx, 0px) * 0.7)) translateY(-45vh); opacity: 0.8; }
+  90% { transform: translate(-50%, -50%) translateX(calc(var(--score-dx, 0px) * 0.9)) translateY(-85vh); opacity: 0.3; }
+  100% { transform: translate(-50%, -50%) translateX(calc(var(--score-dx, 0px) * 1.1)) translateY(-120vh); opacity: 0; }
+}
+
+@keyframes score-wiggle {
+  0% { transform: translateX(0); }
+  25% { transform: translateX(-8px); }
+  50% { transform: translateX(6px); }
+  75% { transform: translateX(-5px); }
+  100% { transform: translateX(0); }
+}
+
+/* micro toast: tiny +1 / -1 indicators that burst from the multiplier */
+.micro-toast{
+  position:fixed;
+  z-index:99999999;
+  pointer-events:none;
+  padding:6px 8px;
   border-radius:8px;
-  box-shadow: 0 10px 36px rgba(179,0,0,0.28), 0 4px 10px rgba(0,0,0,0.6), inset 0 -6px 24px rgba(255,90,90,0.08);
-  transform-origin:left center;
-  font-family: var(--mono);
-  font-size:24px;
-  border: 1px solid rgba(255,120,120,0.12);
-  animation: fbi-throb 700ms ease-out forwards;
+  font-family:var(--mono);
+  font-weight:900;
+  font-size:12px;
+  transform:translate(-50%,-50%);
+  opacity:1;
+  color:#06261a;
+  background:linear-gradient(180deg,#bfffd6,#8fffb0);
+  box-shadow:0 6px 18px rgba(0,0,0,0.4), inset 0 -3px 8px rgba(255,255,255,0.06);
 }
-.fbi-delta.small{ font-size:18px; padding:8px 12px; }
-.fbi-delta.big{ font-size:36px; padding:14px 22px; }
+.micro-toast.danger{ background:linear-gradient(180deg,#ffd6d6,#ff9a9a); color:#2b0000; }
 
-@keyframes fbi-throb {
-  0%{ transform: scale(0.6) translateX(24px); opacity:0; filter: blur(2px); }
-  40%{ transform: scale(1.08) translateX(0); opacity:1; filter: blur(0); }
-  80%{ transform: scale(0.98) translateX(-6px); opacity:0.9; }
-  100%{ transform: scale(0.9) translateX(-12px); opacity:0; }
+/* FBI-origin micro-toast: slightly different tint and stronger red glow */
+.micro-toast.fbi-origin { background: linear-gradient(180deg,#9b0000,#c40000); color:#ffffff; box-shadow:0 12px 44px rgba(180,20,20,0.34), 0 4px 18px rgba(180,20,20,0.22), inset 0 -6px 16px rgba(0,0,0,0.12); }
+
+/* micro-toast fade: prefer CSS animation for smooth opacity fade to avoid blinking */
+@keyframes micro-burst {
+  0% { transform: translate(-50%, -50%) translateX(0px) translateY(0px) scale(1); opacity: 1; }
+  40% { opacity: 0.95; }
+  100% { transform: translate(-50%, -50%) translateX(var(--micro-dx, -120px)) translateY(var(--micro-dy, -80px)) scale(0.9); opacity: 0; }
 }
 
-/* simple particle burst (small circles) */
-.fbi-particles { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); pointer-events:none; overflow:visible; }
-.fbi-particle { width:10px; height:10px; border-radius:50%; background:radial-gradient(circle,#ffd6d6,#ff8080); box-shadow:0 8px 22px rgba(255,80,80,0.28); position:absolute; opacity:0.95; }
+.micro-toast.animate {
+  animation: micro-burst var(--micro-dur, 900ms) cubic-bezier(.2,.9,.3,1) forwards;
+}
+
+/* Neon glow and particle sparks for multiplier micro-toasts */
+.micro-toast.success {
+  background: linear-gradient(180deg, rgba(191,255,214,0.96), rgba(143,255,176,0.96));
+  color: #02220e;
+  box-shadow: 0 8px 32px rgba(0,255,160,0.12), 0 2px 10px rgba(0,255,140,0.06), inset 0 -4px 12px rgba(255,255,255,0.05);
+}
+.micro-sparks{ position:absolute; left:50%; top:40%; transform:translate(-50%, -50%); pointer-events:none; width:0; height:0; }
+.micro-spark{ width:6px; height:6px; border-radius:50%; opacity:0.0; transform:translate(0,0) scale(0.8); box-shadow:0 6px 18px rgba(0,255,140,0.14); }
+@keyframes spark-emit {
+  0% { opacity:1; transform: translate(0,0) scale(1); filter:blur(0px); }
+  40% { opacity:0.95; }
+  100% { opacity:0; transform: translate(var(--sx, -40px), var(--sy, -60px)) scale(0.2); filter:blur(2px); }
+}
+.micro-spark.animate { animation: spark-emit 700ms cubic-bezier(.2,.9,.3,1) forwards; }
+
+/* add a neon outline glow to hint the cyber aesthetic */
+.micro-toast.animate { box-shadow: 0 12px 44px rgba(0,255,160,0.12), 0 4px 18px rgba(0,200,120,0.08), inset 0 -6px 16px rgba(255,255,255,0.06); }
+
+/* Debug: beat-game button removed */

@@ -8,13 +8,14 @@
   const scoreMult = document.getElementById('score-mult');
   const scoreCurrent = null; // removed "Current Hack" display per user request
   const fbiValue = document.getElementById('fbi-value');
+  const minigameEl = document.getElementById('minigame');
 
   const state = {
     hackerScore: 0,
     fbiInterest: 0
   };
 
-  // ensure persistent game state bag exists and multiplier defaults to 1
+  // ensure persistent game state bag exists and multiplier defaults to 1 
   window._game = window._game || {};
   window._game.lastMultiplier = window._game.lastMultiplier || 1;
   // purchases and upgrade flags
@@ -22,7 +23,7 @@
   window._game.upgrades = window._game.upgrades || {};
   // effect multipliers with sensible defaults
   window._game.fbiDecayMultiplier = window._game.fbiDecayMultiplier || 1;
-  window._game.downloadSpeedMultiplier = window._game.downloadSpeedMultiplier || 1;
+  // bandwidth now uses `bandwidthLevel` (seconds reduced per level)
 
   // track the highest observed base hacker score to prevent accidental decreases
   let lastHackerScore = 0;
@@ -37,18 +38,73 @@
     return names[Math.floor(Math.random()*names.length)];
   }
 
-  // 100 silly hacker rank names (index 0 => rank 1)
+  // show a small red micro-toast that emits from the top of the FBI meter
+  function showFbiToast(text, opts = {}) {
+    try {
+      const el = document.createElement('div');
+      el.className = 'micro-toast danger fbi-origin';
+      el.textContent = text;
+      document.body.appendChild(el);
+
+      // position at top of the fbi-fill element
+      const fill = document.getElementById('fbi-fill');
+      if (fill) {
+        const r = fill.getBoundingClientRect();
+        // parse percent from inline style if present, otherwise compute from current height
+        let percent = 0;
+        const hs = (fill.style && fill.style.height) ? fill.style.height : '';
+        const m = hs.match(/(\d+)%/);
+        if (m) percent = parseInt(m[1],10) / 100;
+        // fallback: read computed height ratio
+        if (!percent) {
+          try {
+            const comp = window.getComputedStyle(fill);
+            const h = parseFloat(comp.height) || r.height;
+            // if element is full height we can approximate percent by its current pixel height relative to its container
+            const parent = fill.parentElement;
+            if (parent) {
+              const pr = parent.getBoundingClientRect();
+              percent = Math.max(0, Math.min(1, (r.height / pr.height)));
+            }
+          } catch(e){ percent = 0; }
+        }
+        // compute visible top of the fill (bottom - visibleHeight)
+        const visibleTopY = r.bottom - (r.height * percent);
+        const centerX = r.left + r.width / 2;
+        el.style.position = 'fixed';
+        el.style.left = (centerX) + 'px';
+        el.style.top = (visibleTopY - 6) + 'px';
+        el.style.transform = 'translate(-50%, -50%)';
+      }
+
+      const dur = opts.duration || 1100;
+      const dx = (Math.random() - 0.5) * 100;
+      const dy = -(120 + Math.random() * 80);
+      el.style.setProperty('--micro-dx', dx + 'px');
+      el.style.setProperty('--micro-dy', dy + 'px');
+      el.style.setProperty('--micro-dur', dur + 'ms');
+      el.classList.add('animate');
+      setTimeout(()=>{ try{ if(el && el.parentNode) el.parentNode.removeChild(el); }catch(e){} }, dur + 420);
+    } catch(e){}
+  }
+
+  // Compact rank list tailored to 90s cyber-hacker vibe.
+  // New scheme: 0-99 => 'Some Nobody', 100-999 => 'Script Kiddie',
+  // then one rank per 10,000 points from 1,000..99,999. Final rank at 100,000.
   const RANK_NAMES = [
-    'Script Kiddie', 'NoobN00b', 'PwnPadawan', 'GlitchedGremlin', 'BitBandit', 'SubnetSurfer', 'PacketPusher', 'NullByteNinja', 'EchoEmp', 'ShadowScripter',
-    'BufferBuccaneer', 'RootRascal', 'HeapHooligan', 'KernelKiddie', 'ProxyPixie', 'PhantomPhisher', 'WormWhisperer', 'SyntaxSamurai', 'HexHopper', 'PingPunk',
-    'GhostGopher', 'CryptoCracker', '404Finder', 'TorTrooper', 'SocketSleuth', 'PacketPirate', 'NMAPNerd', 'CobaltCoder', 'BinaryBandit', 'ZeroDayZed',
-    'SlackSniper', 'BitBender', 'LoopLurker', 'PortPhantom', 'RootRogue', 'ShellShock', 'CipherSeeker', 'VaporVandal', 'SpamSprinter', 'TrojanTrickster',
-    'HexHacker', 'WraithWriter', 'FuzzerFox', 'BackdoorBeast', 'SudoSlinger', 'GhostWalker', 'NexusNabber', 'GadgetGanker', 'PacketProwler', 'SignalSlicer',
-    'ProxyPhantom', 'RogueRouter', 'ColdCallCoder', 'DDoSDrifter', 'ShadowScript', 'InkInjector', 'BinaryBishop', 'MalwareMaven', 'ByteBandito', 'LoopLord',
-    'FluxFiddler', 'GigaGrifter', 'SparkSplicer', 'NetNinja', 'CacheCobra', 'HeapHunter', 'RootReaper', 'EchoEraser', 'SiphonSage', 'PingParrot',
-    'TraceTactician', 'WormWarden', 'PacketPaladin', 'KernelKing', 'CloudCorsair', 'ScriptSavant', 'ByteBruiser', 'VoltVandal', 'FiddleFist', 'ProxyPrince',
-    'QuantumQuirk', 'LatchLancer', 'HashHacker', 'SocketSultan', 'PhantomProbe', 'HexHerald', 'ZeroZenith', 'BrickBreaker', 'SleetSlicer', 'FogForger',
-    'NeonNetrunner', 'SpectreSpinner', 'VoltViper', 'NullNomad', 'GlitchGargoyle', 'L33tLurker', 'ObsidianOperator', 'PwnPuppeteer', 'CipherCzar', '1337 H4CK3R PWN3R 0F 4LL!!!'
+    // placeholders for lower indexes, mapping will be handled in compute section
+    'Some Nobody',
+    'Script Kiddie',
+    // progressive ranks for every 10k step starting at 1,000
+    'Dial-up Dabbler',
+    'Packet Pusher',
+    'Proxy Pixie',
+    'Null Byte Ninja',
+    'Root Rascal',
+    'Shell Slinger',
+    'Kernel King',
+    'Shadow Scripter',
+    'Neon Netrunner'
   ];
 
   // helper: current prompt string depending on connection
@@ -60,11 +116,182 @@
   }
 
   function appendLine(text, className) {
+    // Always append lines to the terminal output. Toasts are strictly for HACKER SCORE notifications.
     const div = document.createElement('div');
     div.className = 'line' + (className ? ' ' + className : '');
     div.textContent = text;
     outputEl.appendChild(div);
     outputEl.scrollTop = outputEl.scrollHeight;
+  }
+
+  // small utility: sleep for ms milliseconds
+  function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
+
+  // reusable typewriter line helper (used by scan, find, etc.)
+  function typewriterLine(text, className, totalMs = 333){
+    return new Promise((resolve) => {
+      try {
+        const div = document.createElement('div');
+        div.className = 'line' + (className ? ' ' + className : '');
+        outputEl.appendChild(div);
+        outputEl.scrollTop = outputEl.scrollHeight;
+        const delay = Math.max(6, Math.floor(totalMs / Math.max(1, text.length)));
+        let i = 0;
+        const t = setInterval(() => {
+          i++;
+          div.textContent = text.slice(0, i);
+          outputEl.scrollTop = outputEl.scrollHeight;
+          if (i >= text.length) {
+            clearInterval(t);
+            resolve();
+          }
+        }, delay);
+      } catch(e) { resolve(); }
+    });
+  }
+
+  // show a transient floating toast above the input bar (rises upward and fades)
+  function showToast(text, opts = {}) {
+    try {
+      // If this is a HACKER SCORE message, delegate to showScoreToast so text is embedded inside the bubble.
+      const textStr = String(text || '');
+      if (textStr.toUpperCase().includes('HACKER SCORE')) {
+        try { showScoreToast(text, opts); } catch(e){}
+        return;
+      }
+      const t = document.createElement('div');
+      const explicitType = (opts && opts.type) ? opts.type : null;
+      const type = explicitType || 'success';
+      t.className = 'floating-toast' + (type === 'danger' ? ' danger' : '');
+      t.textContent = text;
+      // attach to body
+      const holder = document.body;
+      holder.appendChild(t);
+      // Toasts are only used for HACKER SCORE increases. Position in the center of the shop/modal area so it visually matches the shop modal.
+      try {
+        if (String(text).toUpperCase().includes('HACKER SCORE')) {
+          // place score toasts above the left-panel score display
+          const leftPanel = document.getElementById('left-panel');
+          const scoreEl = document.getElementById('score-big');
+          // 1 inch in CSS pixels ~96px
+          const inchPx = 96;
+          if (leftPanel && scoreEl) {
+            const lp = leftPanel.getBoundingClientRect();
+            const rs = scoreEl.getBoundingClientRect();
+            const centerX = Math.round(lp.left + lp.width / 2);
+            const top = Math.round(rs.top - inchPx);
+            t.style.position = 'fixed';
+            t.style.left = centerX + 'px';
+            t.style.top = top + 'px';
+            t.style.transform = 'translate(-50%, -50%)';
+            t.style.whiteSpace = 'nowrap';
+          } else {
+            // fallback to terminal center
+            const term = document.getElementById('terminal');
+            const anchor = document.getElementById('shop-modal') || term;
+            if (anchor) {
+              const r = anchor.getBoundingClientRect();
+              const left = Math.round(r.left + r.width / 2);
+              const top = Math.round(r.top + r.height / 2);
+              t.style.position = 'fixed';
+              t.style.left = left + 'px';
+              t.style.top = top + 'px';
+              t.style.transform = 'translate(-50%, -50%)';
+              t.style.whiteSpace = 'nowrap';
+            }
+          }
+        }
+      } catch (e) {}
+  // force initial style then animate (default: fade-up) for non-score toasts.
+      // Danger toasts should last a bit longer so the red penalty is more noticeable.
+      const defaultNonScoreDur = opts.duration || (opts.type === 'danger' ? 8200 : 5500);
+      if (!String(text).toUpperCase().includes('HACKER SCORE')) {
+        t.animate([
+          { transform: 'translateY(0px)', opacity: 1 },
+          { transform: 'translateY(-60px)', opacity: 0 }
+        ], { duration: defaultNonScoreDur, easing: 'cubic-bezier(.2,.9,.3,1)' });
+        setTimeout(() => { try { if (t && t.parentNode) t.parentNode.removeChild(t); } catch(e){} }, defaultNonScoreDur);
+      } else {
+        // score toasts rely on CSS (.rise-wiggle) and are removed after duration
+        t.classList.add('rise-wiggle');
+        const scoreDur = opts.duration || (opts.type === 'danger' ? 9200 : 7600);
+        t.style.setProperty('--toast-dur', scoreDur + 'ms');
+        setTimeout(() => { try { if (t && t.parentNode) t.parentNode.removeChild(t); } catch(e){} }, scoreDur + 80);
+      }
+    } catch (e) {}
+  }
+
+  // Specialized score toast: sleek, non-fading, drifts horizontally off-screen and disappears.
+  function showScoreToast(text, opts = {}) {
+    try {
+      const t = document.createElement('div');
+      const textStr = String(text || '');
+      // infer sign for colored styling unless explicitly provided
+      const explicitType = (opts && opts.type) ? opts.type : null;
+      let type = explicitType || 'success';
+      if (!explicitType) {
+        const m = textStr.match(/([+-]?\d+)\s*HACKER SCORE/i);
+        if (m && m[1]) type = String(m[1]).trim().startsWith('-') ? 'danger' : 'success';
+        else if (/\-\d+/.test(textStr)) type = 'danger';
+        else type = 'success';
+      }
+  t.className = 'floating-toast score-toast' + (type === 'danger' ? ' danger' : '');
+  // use a rise-only animation (no wiggle) so the score bubble drifts upward cleanly
+  t.classList.add('rise-only');
+      // compute a concise display version so the toast fits on the page
+      const full = String(text || '');
+      function shortify(s) {
+        try {
+          const m = s.match(/([+-]?\d+)\s*HACKER SCORE/i);
+          if (m) {
+            let n = m[1]; if (!/^\+|\-/.test(n)) n = (n[0] === '-') ? n : '+' + n;
+            return `${n} HACKER SCORE`;
+          }
+          const m2 = s.match(/\+(\d+)/);
+          if (m2) return `+${m2[1]} HACKER SCORE`;
+          if (/you can now afford/i.test(s)) {
+            // try to extract upgrade name (after colon) or last quoted phrase
+            const after = s.split(':').pop().trim();
+            const q = after.match(/"([^"]+)"/);
+            const name = q ? q[1] : after;
+            return name.length > 28 ? name.slice(0,24) + '...' : name;
+          }
+          // fallback: trim to 28 chars
+          return s.length > 28 ? s.slice(0,25) + '...' : s;
+        } catch (e) { return s.length > 28 ? s.slice(0,25) + '...' : s; }
+      }
+      const disp = shortify(full);
+    // embed the text inside the bubble (no inner wiggle)
+  t.innerHTML = `<span class="score-toast-inner">${disp}</span>`;
+      t.title = full;
+      document.body.appendChild(t);
+      // anchor over left panel score if available
+      const leftPanel = document.getElementById('left-panel');
+      const scoreEl = document.getElementById('score-big');
+      const inchPx = 96;
+      if (leftPanel && scoreEl) {
+        const lp = leftPanel.getBoundingClientRect();
+        const rs = scoreEl.getBoundingClientRect();
+        const centerX = Math.round(lp.left + lp.width / 2);
+        // move toast higher: 1.5 inches above score
+        const top = Math.round(rs.top - (inchPx * 1.5));
+        t.style.position = 'fixed';
+        t.style.left = centerX + 'px';
+        t.style.top = top + 'px';
+        t.style.transform = 'translate(-50%, -50%)';
+        // keep score toasts horizontally centered within the left panel
+        t.style.left = (lp.left + lp.width / 2) + 'px';
+        // force no horizontal drift for clean centered appearance
+        t.style.setProperty('--score-dx', '0px');
+      }
+      // Use CSS animation for rise + wiggle + fade. Allow caller to specify duration.
+      // make the default a bit slower so the toast rises more leisurely
+      const dur = opts.duration || 7600;
+      // expose duration to CSS via inline style var so keyframes can read it via animation-duration (ms)
+      t.style.setProperty('--toast-dur', dur + 'ms');
+      // Remove element after duration + small buffer
+      setTimeout(() => { try { if (t && t.parentNode) t.parentNode.removeChild(t); } catch(e){} }, dur + 60);
+    } catch (e) {}
   }
 
   function renderMeters() {
@@ -79,22 +306,136 @@
     if (scoreBig) scoreBig.textContent = Math.round(hs);
     // multiplier and current hack points come from hackState when active
   const mult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
-    if (scoreMult) scoreMult.textContent = `Multiplier: x${mult}`;
+    if (scoreMult) {
+  // clarify multiplier applies to downloads, not to minigame points
+  const displayMult = Math.min(mult, 1000); // cap visible multiplier at x1000
+  scoreMult.textContent = `DOWNLOAD MULTIPLIER x${displayMult}`;
+      try {
+        // visual sizing uses a capped effective value for readability, but animation speed uses the real multiplier
+        const visualMult = Math.min(mult, 1000);
+        // font size grows with multiplier but caps at a reasonable max
+        const fontSize = Math.min(84, 14 + (visualMult * 0.2));
+        scoreMult.style.fontSize = fontSize + 'px';
+        // subtle scale using logarithm for smoother growth
+        const scale = 1 + Math.min(8, Math.log2(visualMult + 1)) * 0.08;
+        // animation speeds scale with the real multiplier for wobble pacing
+        const pct = Math.min(1, Math.log2(mult + 1) / Math.log2(1000 + 1));
+        const baseShake = Math.max(60, 900 - Math.floor(pct * 820));
+        const baseRotate = Math.max(220, 1400 - Math.floor(pct * 1180));
+        scoreMult.style.transform = `scale(${scale})`;
+        scoreMult.style.transition = 'transform 300ms cubic-bezier(.2,.9,.3,1)';
+        scoreMult.style.animation = `mult-shake ${baseShake}ms ease-in-out infinite, mult-rotate ${baseRotate}ms linear infinite`;
+      } catch (e) { }
+    }
     if (scoreCurrent) scoreCurrent.textContent = `Current hack: ${Math.round(cur)} pts`;
-    // compute rank: 100 ranks, rank increases every 1000 points. rank 1 = 0-999, rank 100 = 99999+
-    const rawRank = Math.min(100, 1 + Math.floor((hs + cur) / 1000));
-    const rankNames = {
-      1: 'Script Kiddie',
-      100: '1337 H4CK3R PWN3R 0F 4LL!!!'
-    };
-  // map rawRank (1..100) to RANK_NAMES array (0..99)
-  const idx = Math.max(0, Math.min(99, rawRank - 1));
-  const rankLabel = RANK_NAMES[idx] || `Rank ${rawRank}`;
+    // compute rank label per user spec:
+    // 0..99 => Some Nobody
+    // 100..999 => Script Kiddie
+    // every 10000 points from 1,000 yields a new cyber-90s inspired title
+    // final rank at 100,000 => SUPER L337 H4CKER!!!
+    const points = Math.max(0, Math.floor(hs + cur));
+    let rankLabel = 'Some Nobody';
+    if (points < 100) {
+      rankLabel = 'Some Nobody';
+    } else if (points < 1000) {
+      rankLabel = 'Script Kiddie';
+    } else if (points >= 100000) {
+      rankLabel = 'SUPER L337 H4CKER!!!';
+    } else {
+      // titles for each 10k tier starting at 1,000
+      const tierTitles = [
+        'Dial-up Dabbler',      // 1,000 - 10,999
+        'Packet Pusher',        // 11,000 - 20,999
+        'Proxy Pixie',          // 21,000 - 30,999
+        'Null Byte Ninja',      // 31,000 - 40,999
+        'Root Rascal',          // 41,000 - 50,999
+        'Shell Slinger',        // 51,000 - 60,999
+        'Kernel King',          // 61,000 - 70,999
+        'Shadow Scripter',      // 71,000 - 80,999
+        'Neon Netrunner'        // 81,000 - 99,999
+      ];
+      const tier = Math.floor((points - 1000) / 10000);
+      rankLabel = tierTitles[Math.max(0, Math.min(tierTitles.length - 1, tier))] || `Rank ${Math.floor(points / 1000)}`;
+    }
   const rankEl = document.getElementById('player-rank');
     if (rankEl) rankEl.textContent = rankLabel;
+    // Rank glow/wobble intensity: non-decreasing so it only grows when player ranks up
+    try {
+      window._game = window._game || {};
+      const prevIntensity = window._game.rankIntensity || 0;
+      // map points to an intensity 0..1 where 0 is lowest and 1 is ultimate
+      let intensity = 0;
+      if (points >= 100000) intensity = 1;
+      else if (points >= 1000) {
+        // scale from 0.05 at 1k up to 0.95 at 99,999
+        intensity = Math.min(0.95, Math.max(0.05, (points - 1000) / 99000));
+      } else if (points >= 100) {
+        intensity = 0.02;
+      } else {
+        intensity = 0;
+      }
+      // persist non-decreasing
+      if (intensity > prevIntensity) window._game.rankIntensity = intensity; else intensity = prevIntensity;
+      // apply visual scaling: glow (text-shadow), scale and animation durations
+      const glowStrength = 6 + Math.floor(intensity * 40); // px blur
+      const glowColor = `rgba(160,255,200,${0.12 + intensity * 0.6})`;
+      const scale = 1 + (intensity * 0.18);
+      const shakeMs = Math.max(220, Math.floor(900 - intensity * 760));
+      const rotateMs = Math.max(400, Math.floor(1400 - intensity * 1100));
+      rankEl.style.textShadow = `0 0 ${glowStrength}px ${glowColor}, 0 2px ${glowColor}`;
+      rankEl.style.transform = `scale(${scale})`;
+      rankEl.style.animation = `rank-shake ${shakeMs}ms ease-in-out infinite, rank-rotate ${rotateMs}ms linear infinite`;
+    } catch(e) { console.debug('rank visual err', e); }
     if (fbiValue) fbiValue.textContent = Math.round(fi);
     // check for ultimate unlock prompt
     maybeShowUltimate();
+    // check for shop unlock hints (show helpful popups when player reaches score milestones)
+    maybeShowUnlockHints();
+  }
+
+  // one-time hints when player reaches score thresholds for shop items
+  let _hackUnlockHintShown = false;
+  let _connectUnlockHintShown = false;
+  function maybeShowUnlockHints() {
+    try {
+      // find the upgrade definitions
+      const hackDef = UPGRADE_LIST.find(u => u.id === 'unlock_hack');
+      const connDef = UPGRADE_LIST.find(u => u.id === 'unlock_connect');
+      if (!hackDef) return;
+        // show hack hint when player has at least the cost for unlock_hack
+        if (!_hackUnlockHintShown && state.hackerScore >= hackDef.cost) {
+          _hackUnlockHintShown = true;
+          // brief modal encouraging purchase in l337 90s voice
+          showModal('Respect the code, kid.',
+            'Congrats — you made it this far, script kiddie.' +
+            '\n\n' +
+            "Scanning for vulnz ain\'t special. Anyone can run a scanner and puke results to a console.\n\n" +
+            `If you want to be a real hacker, you gotta do more than find stuff on the Net. Buy the "${hackDef.name}" (${hackDef.cost} pts) in the Shop to unlock the 'hack' command.` +
+            '\n\n' +
+            "After you buy it, use: hack <domain_name> to assault the machines you\'ve discovered.\n\n" +
+            "Lots of people can run scans. The BIG PLAYERS turn that noise into signal and cash. Get better, kid."
+          );
+          // show top banner prompting purchase (green)
+          try { showUnlockBanner(`You can now purchase: ${hackDef.name} — open the Shop to buy`); } catch(e){}
+      }
+      // show connect hint when player can afford connect (but only after hack hint or if they already have hack)
+      if (connDef && !_connectUnlockHintShown && state.hackerScore >= connDef.cost) {
+        // only show if they don't already own connect
+        const owns = (window._game && window._game.purchases && window._game.purchases.find(p => p.id === 'unlock_connect')) ? true : false;
+        if (!owns) {
+          _connectUnlockHintShown = true;
+            showModal('You made it. Now go earn it.',
+              "Nice — you made it this far. Now you're HACKING. But don\'t get cozy: it only gets harder from here.\n\n" +
+              "Hacking boxes won\'t pay the electric bill. If you\'re serious about this life, you gotta turn access into currency.\n\n" +
+              `Buy the "${connDef.name}" (${connDef.cost} pts) in the Shop to unlock the 'connect' command.\n\n` +
+              "Once you own it, from the main terminal run: connect <domain> to attach to any machine you\'ve hacked. Once connected, you can download files for HUGE hacker cred. Sick!\n\n" +
+              "Bigger files mean bigger points — pretty easy, right? But warning: while you\'re connected the FBI will be hot on your trail, getting more interested every second.\n\n" +
+              "Also: hauling files draws major attention. Download wisely, N00b — don\'t get caught."
+            );
+          try { showUnlockBanner(`You can now purchase: ${connDef.name} — open the Shop to buy`); } catch(e){}
+        }
+      }
+    } catch (e) {}
   }
 
   // if player reaches ultimate hacker score threshold, prompt special instruction once
@@ -106,63 +447,47 @@
       // if a hack minigame is active, cancel it so the player can immediately run the FBI scan
       try { if (hackState) endHack(false); } catch (e) {}
       // non-blocking modal
-      showModal('ULTIMATE HACKER UNLOCKED', `You have reached 100000 HACKER SCORE and are now the ultimate hacker.\n\nType the command: scan FBI\n\nThis will reveal a single target: fbi.gov (The Federal Bureau of Investigation).`);
+  showModal('ULTIMATE HACKER UNLOCKED', `YOU ARE NOW THE ULTIMATE HACKER.\n\nYour skills are fearsome and unreal — servers whisper when you touch the net. Downloads used to thrill you; now they're training wheels. You hack for sport. The bigger the hit, the harder you grin. Money's for toddlers: it's time to hunt the BIG FISH.\n\nIf you really wanna prove you're untouchable, break ranks and go loud: run the command "scan FBI" from the main terminal to reveal your target. After that... you know what to do.\n\nStay lethal. Stay legendary. -- SUPER L337`);
       // show banner CTA above the terminal encouraging the player to scan the FBI
       try {
         const b = document.getElementById('banner-cta');
         if (b) {
-          b.textContent = ' HACK THE FBI: run > scan FBI !!!!!!! HACK THOSE LOSERS! ';
+          b.textContent = 'HACK THE FBI!!! Run the command " scan fbi " from the main terminal window.';
+          b.classList.remove('unlock'); b.classList.add('fbi');
           b.style.display = 'block';
         }
       } catch (e) {}
     }
   }
 
-  // show a transient, casino-style '+N' indicator on the right when FBI interest increases
-  function showFbiDelta(n) {
+  // show/hide small green unlock banner at the top of the terminal
+  function showUnlockBanner(text) {
     try {
-      if (!n || n === 0) return;
-      let holder = document.querySelector('.fbi-delta-holder');
-      if (!holder) {
-        holder = document.createElement('div');
-        holder.className = 'fbi-delta-holder';
-        document.body.appendChild(holder);
-      }
-      const el = document.createElement('div');
-      el.className = 'fbi-delta ' + (Math.abs(n) > 8 ? 'big' : (Math.abs(n) > 3 ? '' : 'small')) + (n > 0 ? ' positive' : ' negative');
-      el.textContent = (n > 0 ? `+${n}` : `${n}`);
-      // particles container
-      const particles = document.createElement('div'); particles.className = 'fbi-particles';
-      el.appendChild(particles);
-      holder.appendChild(el);
-
-      // create a few particle dots that animate outward
-      const pcount = Math.min(8, Math.max(3, Math.abs(n)));
-      for (let i=0;i<pcount;i++) {
-        const p = document.createElement('div'); p.className = 'fbi-particle';
-        particles.appendChild(p);
-        // randomize spread (emit to the right from the right-side holder)
-        const angle = (Math.random()*Math.PI) - (Math.PI / 2); // -90deg .. +90deg (rightwards hemisphere when flipped)
-        const dist = 24 + Math.random()*56;
-        const dx = Math.cos(angle)*dist; const dy = Math.sin(angle)*dist;
-        // position relative to right edge
-        p.style.right = '6px'; p.style.top = '50%';
-        p.animate([
-          { transform: 'translate(0,0) scale(1)', opacity:1 },
-          { transform: `translate(${ -dx }px, ${dy}px) scale(0.5)`, opacity:0 }
-        ], { duration: 900 + Math.random()*300, easing: 'cubic-bezier(.2,.9,.3,1)' });
-        setTimeout(() => { try { particles.removeChild(p); } catch(e) {} }, 1400);
-      }
-
-      // remove after animation
-      setTimeout(() => { try { if (holder.contains(el)) holder.removeChild(el); } catch(e) {} }, 1200);
-    } catch (e) {}
+      const b = document.getElementById('banner-cta');
+      if (!b) return;
+      b.textContent = text;
+      b.classList.remove('fbi'); b.classList.add('unlock');
+      b.style.display = 'block';
+      b.setAttribute('aria-hidden','false');
+    } catch(e){}
   }
+
+  function hideUnlockBanner() {
+    try {
+      const b = document.getElementById('banner-cta');
+      if (!b) return;
+      b.style.display = 'none';
+      b.classList.remove('unlock'); b.classList.remove('fbi');
+      b.setAttribute('aria-hidden','true');
+    } catch(e){}
+  }
+
+  // Right-side FBI delta indicator removed. Use showFbiToast() which emits from the FBI meter fill instead.
 
   function handleCommand(raw) {
     window._game = window._game || {};
     if (window._game._gameOver) {
-      appendLine('Game over. Please restart to play again.', 'muted');
+      appendLine('Game over. Refresh the page to play again.', 'muted');
       return;
     }
   const cmd = (raw || '').trim();
@@ -193,46 +518,49 @@
 
     // If connected to a remote machine, only allow remote commands
     if (connection) {
-      const remoteAllowed = ['clear','cls','exit','help','find','cat','download'];
+      const remoteAllowed = ['exit','help','ls','cat','download'];
       if (!remoteAllowed.includes(name)) {
-        appendLine('The specified command does not exist.', 'muted');
+  appendLine('The specified command does not exist.', 'muted');
         return;
       }
     }
 
-    if (name === 'help') {
+  if (name === 'help') {
       if (connection) {
         const entries = [
           {cmd: 'cat <file>', desc: 'display the contents of a remote file'},
-          {cmd: 'clear', desc: 'clear the terminal output on remote machine'},
           {cmd: 'download <file>', desc: 'download a file from the remote host (adds FBI interest)'},
           {cmd: 'exit', desc: 'disconnect and return to local terminal'},
-          {cmd: 'find', desc: 'search the remote filesystem for interesting files'},
+          {cmd: 'ls', desc: 'list files on the remote filesystem (use download <file>)'},
           {cmd: 'help', desc: 'show this help text for remote machine'}
         ];
         entries.sort((a,b) => a.cmd.localeCompare(b.cmd));
         appendLine('Available commands on remote machine:', 'muted');
         entries.forEach(e => appendLine(`  ${e.cmd} - ${e.desc}`, 'muted'));
       } else {
+        // build help entries dynamically so some commands can be gated behind purchases
         const entries = [
-          {cmd: 'cat <file>', desc: 'read a downloaded file'},
-          {cmd: 'clear', desc: 'clear the terminal output'},
-          {cmd: 'cls', desc: 'clear the terminal output'},
-          {cmd: 'connect <ip|hostname>', desc: 'connect to a hacked machine you own'},
-          {cmd: 'hack <ip|hostname>', desc: 'attempt to hack a scanned target'},
           {cmd: 'help', desc: 'show this help text'},
-          {cmd: 'shop', desc: 'open the in-game shop to purchase upgrades'},
-          {cmd: 'purchase <index>', desc: 'buy an upgrade by its shop index using HACKER SCORE'},
-          {cmd: 'list-purchases', desc: 'show upgrades you have purchased'},
           {cmd: 'list-downloads', desc: 'show files you have downloaded'},
           {cmd: 'list-owned', desc: 'show hacked machines you own'},
           {cmd: 'list-scan', desc: 'show all previously discovered scan results'},
           {cmd: 'scan', desc: 'discover random vulnerable systems'}
         ];
+        // 'cat' is only available when connected to a remote machine (remote cat)
+        // only show 'connect' if the player has purchased the unlock_connect upgrade
+        try {
+          const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
+          if (hasConnect) entries.splice(1, 0, {cmd: 'connect <ip|hostname>', desc: 'connect to a hacked machine you own'});
+        } catch(e) {}
+        // if the player has purchased the hack unlock, show hack
+        try {
+          const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+          if (hasHack) entries.splice(3, 0, {cmd: 'hack <ip|hostname>', desc: 'attempt to hack a scanned target'});
+        } catch(e) {}
         entries.sort((a,b) => a.cmd.localeCompare(b.cmd));
-        appendLine('Available commands:', 'muted');
+      appendLine('Available commands:', 'muted');
         entries.forEach(e => appendLine(`  ${e.cmd} - ${e.desc}`, 'muted'));
-    appendLine('  restart - restart the game (clear session)', 'muted');
+    
       }
     } else if (name === 'scan') {
       // special-case: scanning the FBI if the player was prompted/unlocked
@@ -251,9 +579,14 @@
         window._game = window._game || {};
         window._game.scanHistory = window._game.scanHistory || [];
         window._game.scanHistory.push(entry);
-  // scanning the FBI will increase FBI interest by 5 points
+  // scanning the FBI will increase FBI interest by 5 points and award hacker score
   state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 5);
-  showFbiDelta(5);
+  try { showFbiToast('+5', { duration: 1100 }); } catch(e){}
+  // award small bounty for discovering a target; apply current multiplier
+  const curMult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
+  const reward = Math.floor(10 * curMult);
+  state.hackerScore += reward;
+  showScoreToast(`+${reward} HACKER SCORE for discovering ${host}`);
         renderMeters();
         return;
       }
@@ -378,24 +711,31 @@
       // reveal entries sequentially, 1 second-ish per host with typing effect
       (async () => {
         for (const obj of entriesToShow) {
-          await typewriterLine(obj.entry);
+            await typewriterLine(obj.entry);
           // record in history and update meters
           window._game.scanHistory.push(obj.entry);
           // each discovered host raises FBI interest by 5 points
           state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 5);
-          showFbiDelta(5);
+          try { showFbiToast('+5', { duration: 1100 }); } catch(e){}
+            // award hacker score per discovered host and apply multiplier
+            const curM = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
+            const rew = Math.floor(10 * curM);
+            state.hackerScore += rew;
+            showScoreToast(`+${rew} HACKER SCORE for discovering ${obj.host}`);
           renderMeters();
           // small pause to allow the faster typewriter effect to settle
           await sleep(20);
         }
       })();
-    } else if (name === 'clear' || name === 'cls') {
-      // clear the terminal output (preserve welcome maybe?)
-      outputEl.innerHTML = '';
-      return;
-    } else if (name === 'hack') {
+      } else if (name === 'hack') {
+      // ensure hack is unlocked via shop
+      const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+      if (!hasHack) {
+  appendLine('The specified command does not exist.', 'muted');
+        return;
+      }
       if (args.length === 0) {
-        appendLine('Usage: hack <ip|hostname>', 'muted');
+  appendLine('Usage: hack <ip|hostname>', 'muted');
       } else {
         startHack(args[0]);
       }
@@ -407,26 +747,39 @@
       else { appendLine('Owned machines:', 'muted'); owned.forEach(l => appendLine(l)); }
       return;
     } else if (name === 'list-scan') {
-      // print all previous scan results
+      // show all previously discovered scan results so player can operate on them later
       window._game = window._game || {};
       const hist = window._game.scanHistory || [];
-      if (hist.length === 0) {
-        appendLine('No previous scan results recorded.', 'muted');
+      if (!hist || hist.length === 0) {
+        appendLine('No scan results recorded yet.', 'muted');
       } else {
-        appendLine('Recorded scan results:', 'muted');
-        hist.forEach(line => appendLine(line));
+        appendLine('Previously discovered scan results:', 'muted');
+        hist.forEach(h => appendLine(`  ${h}`));
       }
       return;
-    } else if (name === 'find') {
-      // remote-only: list interesting filenames based on the connected host's category
-      if (!connection) {
-        appendLine('The specified command does not exist.', 'muted');
+    } else if (name === 'cat') {
+        // require connection for cat (local cat removed)
+        if (!connection) { appendLine('Unknown command: cat', 'muted'); appendLine("Type 'help' to see available commands.", 'muted'); return; }
+        if (args.length === 0) { appendLine('Usage: cat <filename>', 'muted'); return; }
+        const parts = args[0].split('/');
+        // if connected, try remote files first
+        if (connection) {
+          const parts2 = connection.target.split('  ');
+          const host = parts2[1] || parts2[0] || 'unknown';
+          const files = ensureFilesMap();
+          const fileObjs = files[host] || generateFilesForHost((parts2[2]||'Unknown').trim(), host);
+          const found = fileObjs.find(f => f.name === args[0] || f.name.endsWith(args[0]));
+          if (!found) { appendLine('File not found on remote host.', 'muted'); return; }
+          appendLine(found.content);
+          return;
+        }
+        // Not connected: try to read from downloaded files
+        window._game = window._game || {};
+        const dl = window._game.downloads || [];
+        const local = dl.find(d => d.name === args[0] || d.name.endsWith(args[0]));
+        if (!local) { appendLine('File not found in downloads.', 'muted'); return; }
+        appendLine(local.content);
         return;
-      }
-      // derive category from the owned entry string stored in connection.target
-      const parts = connection.target.split('  ');
-      const cat = (parts[2] || 'Unknown').trim();
-      // ensure files exist for this host
       const host = parts[1] || parts[0];
       const fileObjs = generateFilesForHost(cat, host);
       appendLine(`Files on ${host}:`, 'muted');
@@ -444,6 +797,117 @@
         appendLine('Downloaded files:', 'muted');
         dl.forEach(d => appendLine(`  ${d.name}  from ${d.host}`));
       }
+      return;
+    } else if (name === 'ls') {
+      // 'ls' must operate on a connected remote host and list filenames + sizes
+      if (!connection) { appendLine('The specified command does not exist.', 'muted'); return; }
+      try {
+        const parts = (connection.target || '').split('  ');
+        const cat = (parts[2] || 'Unknown').trim();
+        const files = ensureFilesMap();
+
+        // determine many possible host keys and try them (unsanitized and sanitized)
+        const rawCandidates = [];
+        if (parts[1]) rawCandidates.push(parts[1].trim());
+        if (parts[0]) rawCandidates.push(parts[0].trim());
+        if (connection.domain) rawCandidates.push(String(connection.domain).trim());
+        if (connection.target) rawCandidates.push(String(connection.target).trim());
+        // normalize and dedupe
+        const seen = new Set();
+        const candList = [];
+        for (const c of rawCandidates) {
+          if (!c) continue;
+          const s = String(c).trim();
+          if (!s) continue;
+          if (!seen.has(s)) { seen.add(s); candList.push(s); }
+        }
+        // always include a sanitized fallback key
+        const fallbackRaw = candList.length ? candList[0] : (connection.domain || connection.target || 'unknown');
+        let sanitized = String(fallbackRaw).split(/[\s\/]+/)[0].replace(/[^a-zA-Z0-9._-]/g, '_');
+        if (!seen.has(sanitized)) candList.push(sanitized);
+
+        let fileObjs = null;
+        let chosenHost = null;
+
+        // Try candidates in order: exact keys, attempt generation for each, then keep the first that yields files
+        for (const candidate of candList) {
+          // direct lookup
+          if (files[candidate] && files[candidate].length) { fileObjs = files[candidate]; chosenHost = candidate; break; }
+          // try unsanitized host if candidate looks sanitized
+          try {
+            if (typeof generateFilesForHost === 'function') {
+              const gen = generateFilesForHost(cat, candidate);
+              if (gen && gen.length) {
+                files[candidate] = gen;
+                fileObjs = gen; chosenHost = candidate; break;
+              }
+            }
+          } catch (e) {
+            // ignore generation errors and continue
+          }
+        }
+
+        // If still empty, create an on-the-fly set under the sanitized key
+        if ((!fileObjs || fileObjs.length === 0)) {
+          try {
+            window._game = window._game || {};
+            const out = [];
+            const cnt = Math.min(8, Math.max(2, Math.floor(2 + Math.random() * 7)));
+            for (let i = 0; i < cnt; i++) {
+              const name = makeUniqueFilename(cat);
+              const content = generateFileContent(name, cat);
+              const size = Math.max(1, Math.min(1337, (typeof content === 'string' ? content.length : Math.floor(Math.random() * 1337))));
+              out.push({ name, content, size, mtime: new Date(Date.now() - Math.floor(Math.random()*1000*60*60*24*365)).toISOString() });
+            }
+            files[sanitized] = out;
+            fileObjs = out;
+            chosenHost = sanitized;
+          } catch (e) { fileObjs = []; }
+        }
+
+        if (!fileObjs || fileObjs.length === 0) {
+          try {
+            const keys = Object.keys(files || {});
+            let picked = null;
+            if (parts[1]) picked = keys.find(k => k && String(k).toLowerCase().includes(String(parts[1]).toLowerCase()));
+            if (!picked && parts[0]) picked = keys.find(k => k && String(k).toLowerCase().includes(String(parts[0]).toLowerCase()));
+            if (!picked && keys.length > 0) picked = keys[0];
+            if (picked) { fileObjs = files[picked]; chosenHost = picked; }
+          } catch(e){}
+        }
+
+        if (!fileObjs || fileObjs.length === 0) { appendLine('No files found on remote host.', 'muted'); return; }
+
+  // debug info for mapping issues
+  try { console.debug('ls: chosenHost=', chosenHost, 'files=', (fileObjs && fileObjs.length) || 0); } catch(e){}
+        // header for clarity (show file count for easier debugging)
+        try {
+          const count = (fileObjs && fileObjs.length) ? fileObjs.length : 0;
+          appendLine(`Files on ${chosenHost}: (${count} files)`, 'muted');
+        } catch(e) { appendLine(`Files on ${chosenHost}:`, 'muted'); }
+
+        // choose files to show and list them
+        const want = Math.min(8, Math.max(2, Math.floor(2 + Math.random() * 7)));
+        const pool = fileObjs.slice();
+        for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp; }
+        const chosen = pool.slice(0, Math.min(want, pool.length));
+        (async () => {
+          try {
+            for (const f of chosen) {
+              await typewriterLine(`${f.name}  ${typeof f.size === 'number' ? f.size : (f.size || 0)} bytes`);
+              await sleep(22);
+            }
+          } catch (err) {
+            // If typewriter listing fails for any reason, fall back to a synchronous print
+            try { console.error('ls listing error, falling back to plain print', err); } catch(e){}
+            for (const f of chosen) {
+              try { appendLine(`${f.name}  ${typeof f.size === 'number' ? f.size : (f.size || 0)} bytes`); } catch(e){}
+            }
+          }
+          // Listing files with `ls` is informational only and should not
+          // affect FBI interest. Leave state unchanged here.
+        })();
+      } catch (e) { console.error('ls error', e); appendLine('Error listing files on remote host.', 'muted'); }
       return;
     } else if (name === 'cat') {
       if (args.length === 0) {
@@ -499,15 +963,17 @@
   if (already) { appendLine('File already downloaded and cannot be downloaded a second time: ' + found2.name, 'muted'); try { inputEl.focus(); } catch (e) {}; return; }
 
   // simulate download duration relative to file size
-  // file sizes are between 1 and 1337 bytes; clamp and compute duration so:
-  // 8 bytes -> 1s, 1337 bytes -> 5s (linear mapping), clamp to 1..5s
+  // file sizes are between 1 and 1337 bytes; map linearly so:
+  // 1 byte -> 1s, 1337 bytes -> 10s
   const bytesForCalc = Math.max(1, Math.min(1337, found2.size || 0));
-  const minSize = 8, maxSize = 1337, minSec = 1, maxSec = 5;
+  const minSize = 1, maxSize = 1337, minSec = 1, maxSec = 10;
   const pct = Math.min(1, Math.max(0, (bytesForCalc - minSize) / (maxSize - minSize)));
-  let duration = Math.max(minSec, Math.round(minSec + pct * (maxSec - minSec)));
-  // apply download speed multiplier from upgrades (e.g., bandwidth doubles speed)
-  const dlMult = (window._game && window._game.downloadSpeedMultiplier) ? window._game.downloadSpeedMultiplier : 1;
-  duration = Math.max(1, Math.round(duration / dlMult));
+  let durationF = (minSec + pct * (maxSec - minSec));
+  // apply bandwidth levels: each level reduces download time by 1 second (stacking)
+  const bwLevelForCalc = (window._game && window._game.bandwidthLevel) ? window._game.bandwidthLevel : 0;
+  durationF = Math.max(0.25, durationF - bwLevelForCalc);
+  // round to nearest second for the simulated ticks, but keep at least 1 second unless extremely fast
+  let duration = Math.max(1, Math.round(durationF));
   appendLine(`Starting download of ${found2.name} (${found2.size || 0} bytes). Estimated time: ${duration}s`, 'muted');
 
       // render a simple progress bar in the terminal by updating a single line
@@ -520,9 +986,11 @@
       const tick = setInterval(() => {
         secondsElapsed++;
   // downloads are riskier: generate 9x FBI interest per second (previously 3)
-  state.fbiInterest = Math.min(100, state.fbiInterest + 9);
-  showFbiDelta(9);
-  renderMeters();
+  if (!(window._game && window._game.modalOpen)) {
+    state.fbiInterest = Math.min(100, state.fbiInterest + 9);
+  try { showFbiToast('+9', { duration: 1200 }); } catch(e){}
+    renderMeters();
+  }
         progress = Math.min(1, secondsElapsed / totalTicks);
         const blocks = Math.floor(progress * 30);
   const bar = '[' + '#'.repeat(blocks) + ' '.repeat(30-blocks) + `] ${Math.floor(progress*100)}%  ${found2.name}`;
@@ -542,71 +1010,33 @@
         if (secondsElapsed >= totalTicks) {
           clearInterval(tick);
           // finalize download
-          // award points: bytes * multiplier
+          // award points: if White Hat is active, downloads give no hacker score; otherwise bytes * multiplier
           const bytes = Math.max(1, Math.min(1337, found2.size || 0));
-          const mult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game.lastMultiplier || 1));
-          const bonus = Math.floor(bytes * mult);
+          const isWhiteDownload = (window._game && window._game.whiteHat) ? true : false;
+          const multForDownload = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game.lastMultiplier || 1));
+          const bonus = isWhiteDownload ? 0 : Math.floor(bytes * multForDownload);
           state.hackerScore += bonus;
           lastHackerScore = Math.max(lastHackerScore, state.hackerScore);
+      // persist the achieved multiplier so it carries to future hacks
+      try { window._game = window._game || {}; window._game.lastMultiplier = Math.max(1, hackState && hackState.multiplier ? hackState.multiplier : (window._game.lastMultiplier || 1)); } catch(e){}
           // persist download record
           window._game = window._game || {};
           // ensure lastMultiplier is preserved and never drops to 0 after download
           window._game.lastMultiplier = window._game.lastMultiplier || (hackState && hackState.multiplier) || 1;
           window._game.downloads = window._game.downloads || [];
           window._game.downloads.push({ host, name: found2.name, size: found2.size || 0, mtime: found2.mtime || new Date().toISOString(), content: found2.content });
-          appendLine(`Download complete: ${found2.name} (+${bonus} pts)`, 'muted');
+          // show HACKER SCORE toast for the download bonus
+          try { showScoreToast(`+${bonus} HACKER SCORE for downloading ${found2.name}`); } catch(e) { appendLine(`Download complete: ${found2.name} (+${bonus} pts)`, 'muted'); }
           renderMeters();
           // ensure input is focused after download finishes
           try { inputEl.focus(); } catch (e) {}
         }
       }, 1000);
       return;
-    } else if (name === 'shop') {
-      // show available upgrades with index
-      appendLine('Available upgrades:', 'muted');
-      UPGRADE_LIST.forEach((u, idx) => {
-        appendLine(` ${idx+1}. ${u.name}  Cost: ${u.cost}  - ${u.desc}`);
-      });
-      appendLine('\nPurchase an upgrade with: purchase <index>');
-      return;
-    } else if (name === 'purchase') {
-      if (args.length === 0) { appendLine('Usage: purchase <index>', 'muted'); return; }
-      const idx = parseInt(args[0], 10) - 1;
-      if (isNaN(idx) || idx < 0 || idx >= UPGRADE_LIST.length) { appendLine('Invalid upgrade index.', 'muted'); return; }
-      const up = UPGRADE_LIST[idx];
-      window._game = window._game || {};
-      window._game.purchases = window._game.purchases || [];
-      if (window._game.purchases.find(p => p.id === up.id)) { appendLine('Upgrade already purchased: ' + up.name, 'muted'); return; }
-      if (state.hackerScore < up.cost) { appendLine('Not enough HACKER SCORE to purchase ' + up.name, 'muted'); return; }
-      // spend points
-      state.hackerScore = Math.max(0, state.hackerScore - up.cost);
-      window._game.purchases.push({ id: up.id, name: up.name, boughtAt: Date.now() });
-      // apply effects immediately
-      if (up.id === 'fasthands') {
-        // shorten future hack commands by flag; we'll check when generating commands
-        window._game.upgrades.fasthands = true;
-      } else if (up.id === 'withoutatrace') {
-        window._game.upgrades.withoutatrace = true;
-        // decay multiplier: make decay 10x faster by adjusting multiplier
-        window._game.fbiDecayMultiplier = 10;
-      } else if (up.id === 'bandwidth') {
-        window._game.upgrades.bandwidth = true;
-        window._game.downloadSpeedMultiplier = 2;
-      }
-      appendLine(`Purchased: ${up.name} (-${up.cost} pts)`, 'muted');
-      renderMeters();
-      return;
-    } else if (name === 'list-purchases') {
-      window._game = window._game || {};
-      window._game.purchases = window._game.purchases || [];
-      if (window._game.purchases.length === 0) {
-        appendLine('No upgrades purchased yet.', 'muted');
-      } else {
-        appendLine('Purchased upgrades:', 'muted');
-        window._game.purchases.forEach((p, i) => appendLine(` ${i+1}. ${p.name} (id: ${p.id})`));
-      }
-      return;
     } else if (name === 'connect') {
+      // gated: player must purchase unlock_connect before using connect
+      const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
+      if (!hasConnect) { appendLine('Unknown command: ' + name, 'muted'); appendLine("Type 'help' to see available commands.", 'muted'); return; }
       if (args.length === 0) {
         appendLine('Usage: connect <ip|hostname>', 'muted');
         return;
@@ -634,7 +1064,7 @@
         if (ps) ps.textContent = `${user}@${domain}`;
       } catch(e) {}
       // show short MOTD welcoming the user to the remote host
-      const parts = target.split('  ');
+      const parts = target.split(' ');
       const host = parts[1] || parts[0];
       appendLine(`MOTD: Welcome to ${host}`, 'muted');
       return;
@@ -652,15 +1082,17 @@
       appendLine('Unknown command: ' + name, 'muted');
       appendLine("Type 'help' to see available commands.", 'muted');
     }
-    // restart command (local only)
-    if (name === 'restart' && !connection) {
-      try { location.reload(); } catch (e) { appendLine('Restart not supported in this environment.', 'muted'); }
-    }
+    // (CLI restart command removed) UI reload is available via Play Again buttons
   }
 
   inputEl.addEventListener('keydown', (e) => {
     // if hack minigame active, intercept keys
     if (hackState) {
+      // if a modal is open, ignore minigame input until player closes it
+      if (window._game && window._game.modalOpen) {
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       // handle backspace
       if (e.key === 'Backspace') {
@@ -669,6 +1101,7 @@
           hackState.pos--;
           const span = minigameEl.children[hackState.pos];
           span.classList.remove('good','bad');
+          try { updateMinigameCursor(); } catch(e){}
         }
         return;
       }
@@ -683,14 +1116,19 @@
         span.classList.remove('bad');
         span.classList.add('good');
         hackState.pos++;
+        try { updateMinigameCursor(); } catch(e){}
         // scoring: increase combo and multiplier
         hackState.combo = (hackState.combo || 0) + 1;
         // ensure multiplier starts from persisted value and increases cumulatively
         if (!hackState.multiplier) hackState.multiplier = (window._game && window._game.lastMultiplier) || 1;
         // increase multiplier by 1 for each correct char (cumulative across hacks)
         hackState.multiplier = Math.max(1, hackState.multiplier + 1);
-      // award points into currentPoints for this hack (clamp to non-negative)
-      const pts = Math.max(0, Math.floor(1 * hackState.multiplier));
+        // award points: if White Hat is active, apply the download multiplier to minigame characters
+      const mult = Math.max(1, (hackState && hackState.multiplier) ? hackState.multiplier : (window._game && window._game.lastMultiplier) || 1);
+      const isWhite = (window._game && window._game.whiteHat) ? true : false;
+      const pts = Math.max(0, Math.floor(isWhite ? (1 * mult) : 1));
+      // micro-toast: small green +1 shoots out of the multiplier
+  try { showMicroToast('+1', { type: 'success', duration: 1400, direction: 'right' }); } catch(e){}
       // immediately apply points to the real hacker score so the on-screen score matches state
       state.hackerScore += pts;
       lastHackerScore = Math.max(lastHackerScore, state.hackerScore);
@@ -707,14 +1145,23 @@
       span.classList.add('bad');
       hackState.mistakes++;
     hackState.combo = 0;
-    // reset multiplier on typo and clear persisted multiplier
-    hackState.multiplier = 1;
-  try { window._game = window._game || {}; window._game.lastMultiplier = Math.max(1, window._game.lastMultiplier || 1); } catch(e){}
+    try { updateMinigameCursor(); } catch(e){}
+      // immediate deflation: reduce the multiplier by half its current value once (clamped to 1)
+    try {
+      // cancel any existing deflate timer
+      if (window._game._deflateInterval) { clearInterval(window._game._deflateInterval); window._game._deflateInterval = null; }
+        const cur = Math.max(1, hackState.multiplier || (window._game && window._game.lastMultiplier) || 1);
+        const decreaseAmount = Math.max(1, Math.floor(cur / 2));
+        hackState.multiplier = Math.max(1, cur - decreaseAmount);
+      try { window._game.lastMultiplier = Math.max(1, hackState.multiplier); } catch(e){}
+        try { showMicroToast(`-${decreaseAmount}`, { type: 'danger', duration: 1400, direction: 'left' }); } catch(e){}
+      renderMeters();
+    } catch(e){}
     hackState.currentPoints = Math.max(0, hackState.currentPoints || 0);
       updateComboUI();
-  // increase FBI meter per missed character (penalty multiplied by 5)
-  state.fbiInterest = Math.min(100, state.fbiInterest + 25);
-  showFbiDelta(25);
+  // increase FBI meter per missed character (reduced penalty to make minigame easier)
+  state.fbiInterest = Math.min(100, state.fbiInterest + 12);
+  try { showFbiToast('+12', { duration: 1300 }); } catch(e){}
   renderMeters();
       if (state.fbiInterest >= 100) {
         handleFbiCapture('during hack minigame');
@@ -766,8 +1213,9 @@
     }
   });
 
-  // commands registry for completion
-  const COMMANDS = ['help', 'clear', 'cls', 'scan', 'list-scan', 'hack', 'list-owned', 'connect', 'exit', 'cat', 'download', 'list-downloads', 'shop', 'purchase', 'list-purchases'];
+  // commands registry for completion (connect is gated and only available after purchase)
+  // 'cat' is gated: only available when connected (remote) or when purchased as an upgrade
+  const COMMANDS = ['help', 'scan', 'list-scan', 'list-owned', 'exit', 'download', 'list-downloads'];
   let completionState = { lastInput: null, matches: [], index: 0 };
 
   // add list-downloads local command
@@ -775,10 +1223,197 @@
 
   // Upgrades available in the shop
   const UPGRADE_LIST = [
-    { id: 'fasthands', name: 'Fasthands', cost: 10000, desc: 'Your incredible finger dexterity allows you to type twice as fast! All hack minigame commands are shorter and easier to type.' },
-    { id: 'withoutatrace', name: 'Without a trace', cost: 5000, desc: 'You are a ghost in the network; FBI interest decays 10x faster.' },
-    { id: 'bandwidth', name: 'Bandwidth Upgrade', cost: 1000, desc: 'More internet — downloads are twice as fast.' }
+  { id: 'unlock_hack', name: 'Hack Tool', cost: 100, desc: 'Unlock the hack command: hack <ip|hostname>.' },
+  { id: 'unlock_connect', name: 'Remote Connect', cost: 1000, desc: 'Unlock the connect command to connect to hacked machines. Requires Hack Tool.' },
+    { id: 'ghost', name: 'Ghost', cost: 5000, desc: 'Become a ghost in the network. Each purchase increases FBI decay by +1/sec (stacking); price doubles each purchase.' },
+    { id: 'bandwidth', name: 'Bandwidth', cost: 10000, desc: 'Speed up downloads. Each purchase reduces download time by 1s (stacking); price doubles each purchase.' },
+    { id: 'whitehat', name: 'White Hat', cost: 7500, desc: 'Switch to white-hat mode: downloads give no HACKER SCORE, but the download multiplier is applied to successful characters during the hack minigame.' }
   ];
+
+  // centralized purchase application helper (used by UI)
+  function applyPurchase(up) {
+    window._game = window._game || {};
+    window._game.purchases = window._game.purchases || [];
+  // allow repeatable purchases for bandwidth and ghost; other upgrades are single-purchase
+  if (up.id !== 'bandwidth' && up.id !== 'ghost' && window._game.purchases.find(p => p.id === up.id)) { appendLine('Upgrade already purchased: ' + up.name, 'muted'); return false; }
+    if (state.hackerScore < up.cost) { appendLine('Not enough HACKER SCORE to purchase ' + up.name, 'muted'); return false; }
+    state.hackerScore = Math.max(0, state.hackerScore - up.cost);
+    window._game.purchases.push({ id: up.id, name: up.name, boughtAt: Date.now() });
+    // special-case: unlock_connect requires unlock_hack dependency
+    if (up.id === 'unlock_connect') {
+      const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+      if (!hasHack) { appendLine('You must purchase the Hack Tool before Remote Connect.', 'muted'); return false; }
+      window._game.upgrades.unlock_connect = true;
+    }
+    if (up.id === 'ghost') {
+      // repeatable Ghost upgrade: increases FBI decay amount by +1 per second per level
+      window._game.upgrades = window._game.upgrades || {};
+      window._game.ghostLevel = (window._game.ghostLevel || 0) + 1;
+      // next cost doubles each purchase
+      window._game.nextGhostCost = (window._game.nextGhostCost || up.cost) * 2;
+    } else if (up.id === 'bandwidth') {
+      // repeatable bandwidth upgrade: increment level, double price for next purchase
+      window._game.upgrades = window._game.upgrades || {};
+      window._game.bandwidthLevel = (window._game.bandwidthLevel || 0) + 1;
+      const level = window._game.bandwidthLevel;
+      // store next price so shop can display it (double each purchase)
+      window._game.nextBandwidthCost = (window._game.nextBandwidthCost || up.cost) * 2;
+    }
+    else if (up.id === 'whitehat') {
+      window._game.upgrades = window._game.upgrades || {};
+      window._game.whiteHat = true;
+      // White Hat is single-purchase; no repeatable behavior
+    }
+    appendLine(`Purchased: ${up.name} (-${up.cost} pts)`, 'muted');
+  try { showToast(`-${up.cost} HACKER SCORE for ${up.name}`, { type: 'danger', duration: 5000 }); } catch(e){}
+    renderMeters();
+  // if this purchase unlocked a tool, hide any unlock banner
+  try { if (up.id === 'unlock_hack' || up.id === 'unlock_connect') hideUnlockBanner(); } catch(e){}
+    // visually mark the shop item as purchased if the shop modal is open
+    try {
+      const modal = document.getElementById('shop-modal');
+      if (modal) {
+        const item = modal.querySelector(`.shop-item[data-id="${up.id}"]`);
+        if (item) {
+          item.classList.add('purchased');
+          const btn = item.querySelector('.shop-buy');
+          if (btn) { btn.disabled = true; btn.textContent = 'Purchased'; }
+        }
+      }
+    } catch(e){}
+    // render badges immediately after a successful purchase
+    try { renderUpgradeBadges(); } catch(e){}
+    return true;
+  }
+
+  // render upgrade badges in the top-left HUD
+  function renderUpgradeBadges() {
+    try {
+      const container = document.getElementById('upgrade-badges');
+      if (!container) return;
+      // clear
+      container.innerHTML = '';
+      window._game = window._game || {};
+      const purchases = window._game.purchases || [];
+      const upgrades = {};
+      purchases.forEach(p => { upgrades[p.id] = (upgrades[p.id] || 0) + 1; });
+
+      // hack badge
+      if (upgrades['unlock_hack']) {
+        const b = document.createElement('div'); b.className = 'badge hack'; b.title = 'Hack Tool'; b.innerHTML = `<span class="label">HACK</span>`;
+        container.appendChild(b);
+      }
+      // connect
+      if (upgrades['unlock_connect']) {
+        const b = document.createElement('div'); b.className = 'badge connect'; b.title = 'Remote Connect'; b.innerHTML = `<span class="label">CON</span>`;
+        container.appendChild(b);
+      }
+      // ghost (repeatable)
+      const ghostLevel = window._game.ghostLevel || 0;
+      if (ghostLevel > 0) {
+        const b = document.createElement('div'); b.className = 'badge ghost'; b.title = `Ghost x${ghostLevel}`;
+        b.innerHTML = `<span class="label">GHO</span>`;
+        const c = document.createElement('div'); c.className = 'count'; c.textContent = ghostLevel;
+        b.appendChild(c);
+        container.appendChild(b);
+      }
+      // bandwidth (repeatable)
+      const bwLevel = window._game.bandwidthLevel || 0;
+      if (bwLevel > 0) {
+        const b = document.createElement('div'); b.className = 'badge bandwidth'; b.title = `Bandwidth level ${bwLevel} (-${bwLevel}s)`;
+        b.innerHTML = `<span class="label">BW</span>`;
+        const c = document.createElement('div'); c.className = 'count'; c.textContent = bwLevel;
+        b.appendChild(c);
+        container.appendChild(b);
+      }
+      // white hat (single purchase)
+      const isWhite = (window._game && (window._game.whiteHat || (window._game.purchases && window._game.purchases.find(p=>p.id==='whitehat')))) ? true : false;
+      if (isWhite) {
+        const b = document.createElement('div'); b.className = 'badge whitehat'; b.title = 'White Hat Mode'; b.innerHTML = `<span class="label">WH</span>`;
+        container.appendChild(b);
+      }
+    } catch(e) { console.debug('renderUpgradeBadges err', e); }
+  }
+
+  // create the shop modal when the shop button is clicked
+  function openShopModal() {
+    try {
+      if (document.getElementById('shop-modal')) return;
+      const modal = document.createElement('div');
+      modal.className = 'shop-modal';
+      modal.id = 'shop-modal';
+      const h = document.createElement('h3'); h.textContent = 'Upgrade Shop'; modal.appendChild(h);
+      const list = document.createElement('div'); list.className = 'shop-list';
+      UPGRADE_LIST.forEach((u, idx) => {
+        const it = document.createElement('div'); it.className = 'shop-item';
+        it.setAttribute('data-id', u.id);
+        const left = document.createElement('div');
+        // special handling: bandwidth and ghost should show name and the current price only (no level in shop)
+        if (u.id === 'bandwidth') {
+          const nextCost = (window._game && window._game.nextBandwidthCost) ? window._game.nextBandwidthCost : u.cost;
+          left.innerHTML = `<div style="font-weight:700">${idx+1}. ${u.name} <span style='color:#bfffd6'>${nextCost} pts</span></div><div class='desc'>${u.desc}</div>`;
+        } else if (u.id === 'ghost') {
+          const nextCost = (window._game && window._game.nextGhostCost) ? window._game.nextGhostCost : u.cost;
+          left.innerHTML = `<div style="font-weight:700">${idx+1}. ${u.name} <span style='color:#bfffd6'>${nextCost} pts</span></div><div class='desc'>${u.desc}</div>`;
+        } else {
+          left.innerHTML = `<div style="font-weight:700">${idx+1}. ${u.name} <span style='color:#bfffd6'>(${u.cost} pts)</span></div><div class='desc'>${u.desc}</div>`;
+        }
+        const buy = document.createElement('button'); buy.className = 'shop-buy'; buy.textContent = 'Buy';
+        buy.addEventListener('click', () => {
+          // for repeatable upgrades, create a dynamic purchase object with current cost
+          let upObj = u;
+          if (u.id === 'bandwidth' || u.id === 'ghost') {
+            upObj = Object.assign({}, u);
+            if (u.id === 'bandwidth') upObj.cost = (window._game && window._game.nextBandwidthCost) ? window._game.nextBandwidthCost : u.cost;
+            if (u.id === 'ghost') upObj.cost = (window._game && window._game.nextGhostCost) ? window._game.nextGhostCost : u.cost;
+          }
+          const ok = applyPurchase(upObj);
+          if (ok) {
+            // for non-repeatable upgrades, visually disable buy button
+            if (u.id !== 'bandwidth' && u.id !== 'ghost') { buy.disabled = true; buy.textContent = 'Purchased'; }
+            // refresh the shop modal to update bandwidth level text and costs
+            try {
+              const modalEl = document.getElementById('shop-modal'); if (modalEl) { modalEl.parentNode.removeChild(modalEl); openShopModal(); }
+              try { inputEl.focus(); } catch(e){}
+            } catch(e){}
+          }
+        });
+        // if already purchased (non-repeatable), mark as purchased immediately
+        try {
+          const owned = (u.id !== 'bandwidth' && u.id !== 'ghost' && window._game && window._game.purchases) ? window._game.purchases.find(p=>p.id===u.id) : null;
+          if (owned) { it.classList.add('purchased'); buy.disabled = true; buy.textContent = 'Purchased'; }
+        } catch(e){}
+        it.appendChild(left); it.appendChild(buy);
+        list.appendChild(it);
+      });
+      modal.appendChild(list);
+      // don't create an internal close button; users should toggle the shop via the Shop button
+      document.body.appendChild(modal);
+      // update the shop-button to reflect open state
+      try {
+        const sb = document.getElementById('shop-button');
+        if (sb) {
+          sb.textContent = 'Close Shop';
+          sb.classList.add('shop-open');
+        }
+      } catch (e) {}
+    } catch (e) {}
+  }
+
+  // wire shop button if present
+  try {
+    const sb = document.getElementById('shop-button');
+    if (sb) sb.addEventListener('click', () => {
+      try {
+        const existing = document.getElementById('shop-modal');
+        if (existing) {
+          existing.parentNode.removeChild(existing);
+          // reset the shop button visual state
+          try { sb.textContent = 'Shop'; sb.classList.remove('shop-open'); } catch(e){}
+        } else openShopModal();
+      } catch(e){}
+    });
+  } catch(e) {}
 
   // connection state when connected to a hacked machine
   let connection = null; // {target: string}
@@ -794,7 +1429,8 @@
     if (!token) return;
 
     // If completing a second token for 'cat' or 'download', offer filenames
-    if (parts.length > 1 && (token.toLowerCase() === 'cat' || token.toLowerCase() === 'download' || token.toLowerCase() === 'connect' || token.toLowerCase() === 'hack' || token.toLowerCase() === 'purchase')) {
+  const wantHackCompletion = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+  if (parts.length > 1 && (token.toLowerCase() === 'cat' || token.toLowerCase() === 'download' || token.toLowerCase() === 'connect' || (wantHackCompletion && token.toLowerCase() === 'hack'))) {
       const prefix = parts[1] || '';
       const candidates = [];
       // remote download/cat completion: from host files
@@ -804,14 +1440,16 @@
         const host = connection.domain || (partsTarget[1] || partsTarget[0]) || 'unknown';
         Array.prototype.push.apply(candidates, (files[host] || generateFilesForHost((partsTarget[2]||'Unknown').trim(), host)).map(f => f.name));
       }
-      // local cat completion: if not connected, complete from downloaded files
-      if (!connection && token.toLowerCase() === 'cat') {
-        window._game = window._game || {};
-        const dl = window._game.downloads || [];
-        Array.prototype.push.apply(candidates, dl.map(d => d.name));
-      }
+      // only support remote cat completion when connected
+      if (!connection && token.toLowerCase() === 'cat') return;
       // connect completion: complete from hacked machines (owned)
       if (token.toLowerCase() === 'connect') {
+        // only offer connect completions if player purchased unlock_connect
+        const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
+        if (!hasConnect) {
+          // no completions available
+          return;
+        }
         window._game = window._game || {};
         const owned = window._game.owned || [];
         // owned entries are strings like 'ip  host  cat'
@@ -821,7 +1459,7 @@
         }));
       }
       // hack completion: complete from scanHistory
-      if (token.toLowerCase() === 'hack') {
+      if (token.toLowerCase() === 'hack' && wantHackCompletion) {
         window._game = window._game || {};
         const hist = window._game.scanHistory || [];
         Array.prototype.push.apply(candidates, hist.map(h => {
@@ -829,13 +1467,7 @@
           return (partsH[1] || partsH[0] || '').trim();
         }));
       }
-      // purchase completion: suggest upgrade indices and names
-      if (token.toLowerCase() === 'purchase') {
-        UPGRADE_LIST.forEach((u, i) => {
-          candidates.push(String(i+1));
-          candidates.push(u.name);
-        });
-      }
+      // no CLI purchase completion (shop is UI-driven)
 
       const key = `${token}:${prefix}`;
       if (completionState.lastInput !== key) {
@@ -850,10 +1482,34 @@
           inputEl.setSelectionRange(newPos, newPos);
           return;
         }
+        // multiple matches: compute longest common prefix among matches and insert up to divergence
+        const lowerMatches = matches.map(m => m.toLowerCase());
+        let lcp = lowerMatches[0];
+        for (let i = 1; i < lowerMatches.length; i++) {
+          const s = lowerMatches[i];
+          let j = 0;
+          const maxj = Math.min(lcp.length, s.length);
+          while (j < maxj && lcp[j] === s[j]) j++;
+          lcp = lcp.slice(0, j);
+          if (!lcp) break;
+        }
+        if (lcp && lcp.length > prefix.length) {
+          // fill the common prefix portion
+          const fill = matches[0].slice(0, lcp.length);
+          const suffix = val.slice(caret) || '';
+          inputEl.value = token + ' ' + fill + suffix;
+          const newPos = (token + ' ' + fill).length;
+          inputEl.setSelectionRange(newPos, newPos);
+          // update stored matches so subsequent Tab presses will show matches list
+          completionState.matches = matches;
+          return;
+        }
+        // no longer common prefix beyond current prefix — show matches
         appendLine('Matches: ' + matches.join(', '), 'muted');
         return;
       }
 
+      // If we are already in a completion state, cycle through matches as before
       if (completionState.matches.length > 0) {
         const pick = completionState.matches[completionState.index % completionState.matches.length];
         completionState.index++;
@@ -867,7 +1523,19 @@
 
     // new completion run for commands (first token)
     if (completionState.lastInput !== token) {
-      const available = connection ? ['help','exit','find','cat','download'] : COMMANDS;
+      let available;
+      if (connection) {
+        available = ['help','exit','find','cat','download'];
+      } else {
+        // build available commands dynamically so purchases immediately enable completion
+        available = ['help','scan','list-scan','list-owned','exit','download','list-downloads'];
+        try {
+          const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+          const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
+          if (hasHack && !available.includes('hack')) available.push('hack');
+          if (hasConnect && !available.includes('connect')) available.push('connect');
+        } catch(e) {}
+      }
       const matches = available.filter(c => c.startsWith(token.toLowerCase()));
       completionState = { lastInput: token, matches, index: 0 };
       if (matches.length === 0) return;
@@ -937,12 +1605,19 @@
       "tar czf - /etc | openssl enc -aes-256-cbc -e -k 0xdeadbeef | base64 -w0"
     ];
     let s = '';
-    while (s.length < 220) {
+    // make FBI long commands even longer for extra challenge
+    while (s.length < 260) {
       s += parts[Math.floor(Math.random()*parts.length)] + ' ; ';
     }
+    // remove trailing separators and whitespace
+    s = s.replace(/(?:\s*;\s*)+$/g, '').trim();
+    // remove any accidental newlines and compress spaces
+    s = s.replace(/\s+/g, ' ').trim();
     // sprinkle l33t substitutions
     s = s.replace(/e/g,'3').replace(/a/g,'4').replace(/o/g,'0').replace(/i/g,'1');
-    return s.substring(0, Math.max(200, s.length));
+    // ensure final string doesn't end with a space or semicolon
+    s = s.replace(/(?:\s*;\s*)+$/g, '').trim();
+    return s;
   }
 
   // generate a shorter but still challenging FBI command (~100 chars) for display and wrapping
@@ -954,11 +1629,90 @@
       "cat /var/log/auth.log | tail -n 200 | gzip -c | base64 -w0 > /tmp/auth.b64"
     ];
     let s = '';
-    while (s.length < 100) {
+    // make the FBI-short variant a bit longer so it's tougher when used as the shortened fasthands fallback
+    while (s.length < 140) {
       s += parts[Math.floor(Math.random()*parts.length)] + ' ; ';
     }
+    // remove trailing semicolons/newline artifacts
+    s = s.replace(/(?:\s*;\s*)+$/g, '').trim();
+    // compress whitespace and make single line
+    s = s.replace(/\s+/g, ' ').trim();
     s = s.replace(/e/g,'3').replace(/a/g,'4').replace(/o/g,'0').replace(/i/g,'1');
-    return s.substring(0, 120);
+    // ensure no trailing space or separator
+    s = s.replace(/(?:\s*;\s*)+$/g, '').trim();
+    return s.substring(0, 160).trim();
+  }
+
+  // build a large pool (~100) of varied, plausible bash-style commands for normal hacks
+  // Simpler, shorter commands using real tools and common filepaths to make the minigame easier
+  function buildHackCommandPool(host, ip) {
+    host = host || 'target.local';
+    ip = ip || '10.0.0.1';
+    const ports = [22, 80, 443, 8080, 3306, 5432, 4444];
+    const nums = () => Math.floor(Math.random()*9000)+100;
+    const files = ['credentials.txt','authorized_keys','backup.tar.gz','users.csv','auth.log','secrets.txt'];
+
+    const templates = [
+      `cat /etc/passwd`,
+      `sudo cat /etc/shadow || true`,
+      `cat /var/log/syslog | tail -n 200`,
+      `tail -n 200 /var/log/auth.log`,
+      `grep -i password /etc -R 2>/dev/null | head -n 20`,
+      `ls -la /home/{user}`,
+      `tar -czf /tmp/backup_{num}.tgz /var/www 2>/dev/null`,
+      `openssl rsa -in ~/.ssh/id_rsa -pubout 2>/dev/null`,
+      `ssh {user}@{host} 'cat ~/.ssh/authorized_keys'`,
+      `scp {user}@{host}:/etc/passwd /tmp/passwd_{num} 2>/dev/null || true`,
+      `nc -vz {ip} {port} 2>/dev/null || true`,
+      `find /var/www -maxdepth 3 -name '*.php' | head -n 20`,
+      `grep -R "secret\|api_key\|password" /etc /var/www 2>/dev/null | head -n 20`,
+      `sed -n '1,40p' /etc/ssh/sshd_config`,
+      `awk -F: '{print $1":"$3":"$6}' /etc/passwd | head -n 30`,
+      `head -n 50 /etc/hosts`,
+      `stat -c '%n %s %y' /var/log/syslog 2>/dev/null || true`,
+      `du -sh /var/www 2>/dev/null || true`,
+      `strings /etc/issue | head -n 8`,
+      `ps aux | grep -E 'sshd|nginx|apache' | head -n 12`
+    ];
+
+    const pool = [];
+    for (let i = 0; pool.length < 100 && i < 1000; i++) {
+      const t = templates[i % templates.length];
+      // lightweight replacements to keep commands valid-looking
+      const cmd = t.replace(/\{host\}/g, host)
+                   .replace(/\{ip\}/g, ip)
+                   .replace(/\{port\}/g, String(ports[i % ports.length] || 22))
+                   .replace(/\{num\}/g, String(nums()))
+                   .replace(/\{file\}/g, files[i % files.length])
+                   .replace(/\{user\}/g, (Math.random() < 0.5) ? 'root' : 'www-data');
+
+      // add occasional small, harmless noise to vary the strings
+      const noise = (i % 7 === 0) ? ` ; echo probe_${nums()} >/tmp/probe.log` : '';
+      let single = (cmd + noise).replace(/\s+/g, ' ').trim();
+
+      // Remove any heredoc markers or explicit newlines if present
+      single = single.replace(/<<\s*'?\w+'?/g, ' ');
+
+      // ensure commands are short and not too hard
+  const MAX_NORMAL_CMD_LEN = 48;
+      if (single.length > MAX_NORMAL_CMD_LEN) {
+        // try to cut at a logical separator
+        const sepMatch = single.substring(0, MAX_NORMAL_CMD_LEN).lastIndexOf(';');
+        if (sepMatch > 8) {
+          single = single.substring(0, sepMatch).trim();
+        } else {
+          single = single.substring(0, MAX_NORMAL_CMD_LEN).trim();
+        }
+      }
+      single = single.replace(/(?:\s*;\s*)+$/g, '').trim();
+      // avoid zero-length entries
+      if (single.length >= 6) pool.push(single);
+    }
+
+    // de-duplicate and ensure pool has 100 entries
+    const uniq = [...new Set(pool)];
+    while (uniq.length < 100) uniq.push(uniq[uniq.length % uniq.length] + ` ; echo extra_${nums()}`);
+    return uniq.slice(0,100);
   }
 
   // build a single plausible filename
@@ -1372,12 +2126,91 @@
 
   // hack minigame state
   let hackState = null; // {target, command, pos, mistakes, combo, multiplier}
-  const minigameEl = document.getElementById('minigame');
+
+  // update the blinking cursor inside the minigame to show current typing position
+  function updateMinigameCursor() {
+    try {
+      if (!minigameEl) return;
+      // remove any existing 'next' marker classes
+      try { Array.from(minigameEl.children).forEach(c => { c.classList.remove('next'); }); } catch(e){}
+      // remove any temporary placeholder we previously inserted
+      try { const tmp = minigameEl.querySelectorAll('.next-empty'); tmp.forEach(t => { if (t && t.parentNode) t.parentNode.removeChild(t); }); } catch(e){}
+
+      // only show the underbar when a hack is active
+      if (!hackState) return;
+      const pos = Math.max(0, Math.min(hackState.pos || 0, minigameEl.children.length));
+      if (pos < minigameEl.children.length) {
+        const target = minigameEl.children[pos];
+        try { target.classList.add('next'); } catch(e){}
+      } else {
+        // if cursor is at end, append a tiny placeholder span to host the underbar
+        const span = document.createElement('span');
+        span.className = 'char next next-empty';
+        span.textContent = '';
+        try { minigameEl.appendChild(span); } catch(e){}
+      }
+    } catch (e) {}
+  }
 
   // helper to update combo UI inside minigame
   function updateComboUI() {
     // No inline combo UI in the minigame (per design); left-side UI updated via renderMeters()
     renderMeters();
+  }
+
+  // micro-toast helper for tiny +1/-1 indicators that shoot out of the multiplier
+  function showMicroToast(text, opts = {}) {
+    try {
+      const el = document.createElement('div');
+      el.className = 'micro-toast ' + (opts.type === 'danger' ? 'danger' : 'success');
+      el.textContent = text;
+      document.body.appendChild(el);
+      // position near the multiplier element if present
+      const sm = document.getElementById('score-mult');
+      if (sm) {
+        const r = sm.getBoundingClientRect();
+        el.style.position = 'fixed';
+        // randomize a little so multiple toasts don't overlap perfectly
+        const jitterX = Math.round((Math.random()-0.5) * 18);
+        el.style.left = (r.left + r.width/2 + jitterX) + 'px';
+        el.style.top = (r.top + 6) + 'px';
+        el.style.transform = 'translate(-50%, -50%)';
+      }
+      // prefer CSS-driven animation for smoother fade and no blinking
+  const dur = opts.duration || 1400; // last slightly longer for visual effect
+  // randomize direction and distance when not specified
+  const randAngle = Math.random() * Math.PI * 2; // full circle
+  const dist = opts.distance || (120 + Math.random() * 120); // 120..240px
+  const dx = (opts.direction === 'left') ? -dist : (opts.direction === 'right') ? dist : Math.round(Math.cos(randAngle) * dist);
+  const dy = (opts.direction === 'up') ? -dist : (opts.direction === 'down') ? dist : Math.round(Math.sin(randAngle) * dist * -1);
+  el.style.setProperty('--micro-dx', dx + 'px');
+  el.style.setProperty('--micro-dy', dy + 'px');
+      el.style.setProperty('--micro-dur', dur + 'ms');
+      // attach neon glow class
+      el.classList.add('animate');
+
+      // If this micro-toast is a multiplier indicator or explicitly requested, spawn small spark particles
+      const wantsSparks = opts.spark || /x\d+/i.test(String(text));
+      if (wantsSparks) {
+        const sparks = Math.min(8, 3 + Math.floor(Math.random()*6));
+        const container = document.createElement('div'); container.className = 'micro-sparks';
+        el.appendChild(container);
+        for (let i=0;i<sparks;i++) {
+          const sp = document.createElement('div'); sp.className = 'micro-spark';
+          // randomize color tint slightly
+          const hue = 150 + Math.floor(Math.random()*60);
+          sp.style.background = `radial-gradient(circle, hsl(${hue}deg 100% 70%) 0%, hsl(${hue}deg 80% 55%) 60%)`;
+          container.appendChild(sp);
+          // stagger animation start
+          const st = Math.random() * 200;
+          setTimeout(() => { sp.classList.add('animate'); }, st);
+          // remove spark after animation
+          setTimeout(() => { try { if (sp && sp.parentNode) sp.parentNode.removeChild(sp); } catch (e) {} }, dur + 600 + st);
+        }
+      }
+
+      setTimeout(()=>{ try{ if(el && el.parentNode) el.parentNode.removeChild(el); }catch(e){} }, dur + 420);
+    } catch (e) {}
   }
 
   function startHack(target) {
@@ -1407,25 +2240,16 @@
     let command;
     // if this is the FBI, create an intentionally long and hard l337 command
     if ((host || '').toLowerCase().includes('fbi.gov')) {
-      // if player has Fasthands, use a shorter FBI command variant
-      command = (window._game && window._game.upgrades && window._game.upgrades.fasthands) ? makeFbiCommand().slice(0, 80) : makeFbiCommand();
+      // FBI targets remain intentionally long and hard
+      command = makeFbiCommand();
       // indicate we're hacking the FBI for special arrest handling
       window._game = window._game || {};
       window._game._hackingFbi = true;
     } else {
-      const cmds = [
-        `ssh root@${host} 'cat /etc/passwd'`,
-        `scp secret.tar.gz root@${ip}:/tmp/`,
-        `curl http://${host}/dump | tar xz` ,
-        `nc ${ip} 4444 -e /bin/sh`,
-        `echo hacking > /tmp/pwned && chmod 777 /tmp/pwned`
-      ];
-      command = cmds[Math.floor(Math.random()*cmds.length)];
-      // if Fasthands purchased, shorten non-FBI commands to make them quicker to type
-      if (window._game && window._game.upgrades && window._game.upgrades.fasthands) {
-        // simple heuristic: use only the first 40-80 chars
-        command = command.slice(0, Math.max(40, Math.min(80, Math.floor(command.length / 2))));
-      }
+      // build a larger pool of hack commands for this target and pick one randomly
+      const pool = buildHackCommandPool(host, ip);
+      command = pool[Math.floor(Math.random() * pool.length)];
+      // non-FBI commands are already generated to be single-line and short
     }
 
   // init combo and multiplier
@@ -1434,13 +2258,18 @@
   hackState = { target: match, command, pos: 0, mistakes: 0, combo: 0, multiplier: persistedMult };
   // starting a hack is noisy: bump FBI interest
   state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 10);
+  try { showFbiToast('+10', { duration: 1300 }); } catch(e){}
   renderMeters();
 
   // start a 1s FBI interest tick while hacking
   if (!window._game) window._game = {};
   if (window._game._hackFbiInterval) clearInterval(window._game._hackFbiInterval);
   window._game._hackFbiInterval = setInterval(() => {
-    state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 1);
+    // if a modal is open, pause FBI interest while the player reads it
+      if (!(window._game && window._game.modalOpen)) {
+      state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 1);
+  try { showFbiToast('+1', { duration: 900 }); } catch(e){}
+    }
     renderMeters();
     if (state.fbiInterest >= 100) {
       // trigger capture and end hack
@@ -1457,61 +2286,14 @@
       // keep real character as textContent so comparisons still work
       span.textContent = ch;
       // mark spaces so they can be rendered visibly via CSS
-      if (ch === ' ') {
-        span.classList.add('space');
-      }
+      if (ch === ' ') span.classList.add('space');
       minigameEl.appendChild(span);
     }
-  // ensure the minigame container will wrap long commands and fit the terminal
-  try {
-    minigameEl.style.whiteSpace = 'pre-wrap';
-    minigameEl.style.wordBreak = 'break-word';
-    minigameEl.style.width = '100%';
-    minigameEl.style.boxSizing = 'border-box';
-  } catch (e) {}
-  minigameEl.classList.add('visible');
-  minigameEl.setAttribute('aria-hidden','false');
-  // ensure combo UI exists and is shown
-  updateComboUI();
-  // focus input
-  inputEl.value = '';
-  inputEl.focus();
+    minigameEl.classList.add('visible');
+    minigameEl.setAttribute('aria-hidden','false');
   }
 
   function endHack(success) {
-    if (!hackState) return;
-    if (success) {
-      appendLine('Hack successful: ' + hackState.target, 'muted');
-      // per-keystroke scoring already applied to state.hackerScore.
-      // clear currentPoints and refresh meters
-      hackState.currentPoints = 0;
-      renderMeters();
-      // record ownership
-      window._game.owned = window._game.owned || [];
-      window._game.owned.push(hackState.target);
-      // remember multiplier for downloads if user exits immediately
-      window._game.lastMultiplier = hackState.multiplier || 1;
-      // if this was the FBI, trigger ultimate win
-      try {
-        const parts = hackState.target.split('  ');
-        const host = parts[1] || parts[0] || '';
-        if ((host || '').toLowerCase().includes('fbi.gov')) {
-          // small delay then show ultimate win
-          setTimeout(() => showUltimateWin(), 500);
-        }
-      } catch (e) {}
-    } else {
-      appendLine('Hack aborted.', 'muted');
-      // clear any partially accrued points on abort
-      if (hackState) hackState.currentPoints = 0;
-      renderMeters();
-    }
-    // cleanup
-  // clear FBI hacking flag if set
-  try { if (window._game) window._game._hackingFbi = false; } catch(e){}
-  hackState = null;
-    minigameEl.classList.remove('visible');
-    minigameEl.setAttribute('aria-hidden','true');
     // stop the hack FBI interval if running
     try {
       if (window._game && window._game._hackFbiInterval) {
@@ -1519,6 +2301,38 @@
         window._game._hackFbiInterval = null;
       }
     } catch (e) {}
+    // clear any partially accrued points on abort
+    if (hackState) hackState.currentPoints = 0;
+    renderMeters();
+    minigameEl.classList.remove('visible');
+    minigameEl.setAttribute('aria-hidden','true');
+    // if successful hack, transfer ownership and show brief success message
+    if (success) {
+      window._game = window._game || {};
+      const hist = window._game.scanHistory || [];
+      const ip = hackState.target.split('  ')[0];
+      const host = hackState.target.split('  ')[1];
+      // mark this as owned (persisted)
+      window._game.owned = window._game.owned || [];
+      window._game.owned.push(hackState.target);
+      // remove from scan history
+      window._game.scanHistory = hist.filter(e => e !== hackState.target);
+  // show success lines as floating toasts instead of cluttering terminal
+  appendLine('Hack successful! You now own this machine: ' + host, 'muted');
+      // award points: successful hack gives a flat 1000 HACKER SCORE
+      const bonus = 1000;
+      state.hackerScore += bonus;
+      lastHackerScore = Math.max(lastHackerScore, state.hackerScore);
+  // persist multiplier achieved during this hack so it carries forward
+  try { window._game = window._game || {}; window._game.lastMultiplier = Math.max(1, (hackState && hackState.multiplier) || (window._game.lastMultiplier || 1)); } catch(e){}
+      renderMeters();
+    } else {
+      appendLine('Hack aborted.', 'muted');
+    }
+    // clear hack state
+    hackState = null;
+    // ensure no stray cursor remains
+    try { updateMinigameCursor(); } catch(e){}
   }
 
   // final win sequence when FBI hacked
@@ -1532,7 +2346,7 @@
       overlay.style.left = '0'; overlay.style.top = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
       overlay.style.background = 'rgba(0,0,0,0.9)';
       overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
-      overlay.style.zIndex = 99999;
+  overlay.style.zIndex = 1100000;
 
       const box = document.createElement('div');
       box.style.background = '#030303';
@@ -1558,7 +2372,8 @@
       art.style.justifyContent = 'center';
 
       const seal = document.createElement('div');
-      seal.textContent = 'FBI SYSTEM';
+      // Banner text indicating the mainframe has been compromised
+      seal.textContent = 'FBI MAINFRAME HAS BEEN HACKED!!!!!';
       seal.style.fontSize = '28px';
       seal.style.letterSpacing = '2px';
       seal.style.color = '#fff';
@@ -1576,38 +2391,32 @@
       img.style.justifyContent = 'center';
       img.style.color = '#9fffbf';
       img.style.fontSize = '18px';
-      img.textContent = 'OFFICIAL FBI CONTROL PANEL — SEAL EMBEDDED';
+      // Place the skull and the green success text inside the main art pane
+      img.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;">
+          <div style=\"font-size:72px;color:#5fff5f;font-weight:900;filter:drop-shadow(0 18px 36px rgba(0,255,60,0.18))\">☠</div>
+          <div style=\"font-size:22px;color:#7fff7f;font-weight:900;margin-top:12px;text-align:center;letter-spacing:1px\">YOU HAVE PWNED THE FBI!!!!! YOU WIN!!!!</div>
+        </div>
+      `;
       art.appendChild(img);
 
       box.appendChild(art);
 
-      const skull = document.createElement('div');
-      skull.innerHTML = `<div style="font-size:56px;color:#5fff5f;font-weight:900;filter:drop-shadow(0 12px 24px rgba(0,255,60,0.14))">☠</div>`;
-      skull.style.marginBottom = '12px';
-      box.appendChild(skull);
-
-      const msg = document.createElement('div');
-      msg.style.fontSize = '20px';
-      msg.style.color = '#7fff7f';
-      msg.style.fontWeight = '900';
-      msg.style.marginBottom = '14px';
-      msg.textContent = 'YOU HAVE BEEN PWNED BY THE MOST L337 HACKER!!!!!';
-      box.appendChild(msg);
-
-      const sub = document.createElement('div');
-      sub.style.color = '#bfffbf';
-      sub.style.marginBottom = '18px';
-      sub.textContent = 'All targets unlocked. You win. Type \"restart\" to play again.';
-      box.appendChild(sub);
-
+      // Play Again button with l337 styling
       const btn = document.createElement('button');
-      btn.textContent = 'Restart Game';
-      btn.style.padding = '10px 18px';
+      btn.textContent = 'PLAY AGAIN — 1337 REBOOT';
+      btn.style.padding = '12px 20px';
       btn.style.fontFamily = 'monospace';
       btn.style.fontSize = '16px';
       btn.style.cursor = 'pointer';
+      btn.style.background = 'linear-gradient(90deg,#06b36b,#00ff90)';
+      btn.style.color = '#041018';
+      btn.style.fontWeight = '900';
+      btn.style.border = '0';
+      btn.style.borderRadius = '8px';
+      btn.style.boxShadow = '0 10px 30px rgba(0,255,120,0.12), inset 0 -6px 18px rgba(255,255,255,0.04)';
       btn.addEventListener('click', () => {
-        try { location.reload(); } catch (e) { document.body.removeChild(overlay); }
+        try { location.reload(); } catch (e) { try { document.body.removeChild(overlay); } catch(e){} }
       });
       box.appendChild(btn);
 
@@ -1627,11 +2436,12 @@
 
   // FBI interest decay: reduce faster now. Decay pauses while the hacking minigame is active (hackState)
   // New behavior: decay 1 point every 800ms when not hacking (faster decrease), pause while hacking.
+  // FBI interest decay: only decrease when player is in the main terminal (not connected)
   setInterval(() => {
     try {
       if (typeof state.fbiInterest === 'number' && state.fbiInterest > 0) {
-        // pause decay while hack minigame is active
-        if (hackState) return;
+        // only decay when NOT connected to a remote machine and not mid-hack
+        if (connection || hackState) return;
         const decayMult = (window._game && window._game.fbiDecayMultiplier) ? window._game.fbiDecayMultiplier : 1;
         // decay more per tick when upgrades increase decay rate
         const decayAmount = Math.max(1, Math.floor(1 * decayMult));
@@ -1640,6 +2450,20 @@
       }
     } catch (e) {}
   }, 800);
+
+  // While connected to a remote machine, FBI interest slowly increases by 1 per second.
+  setInterval(() => {
+    try {
+      if (window._game && window._game._gameOver) return;
+      if (connection) {
+        if (typeof state.fbiInterest === 'number' && state.fbiInterest < 100) {
+          state.fbiInterest = Math.min(100, state.fbiInterest + 1);
+          try { showFbiToast('+1', { duration: 900 }); } catch(e){}
+          try { renderMeters(); } catch(e){}
+        }
+      }
+    } catch (e) {}
+  }, 1000);
 
   // Safety watcher: if any code path sets the FBI interest to >=100 but forgot to call capture,
   // ensure capture is triggered. handleFbiCapture will noop if a recent capture is already active.
@@ -1664,7 +2488,7 @@
       overlay.style.left = '0'; overlay.style.top = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
       overlay.style.background = 'rgba(0,0,0,0.6)';
       overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
-      overlay.style.zIndex = 9999;
+  overlay.style.zIndex = 1100000;
 
      
       const box = document.createElement('div');
@@ -1688,15 +2512,23 @@
       p.textContent = message || '';
       box.appendChild(p);
 
-      const btn = document.createElement('button');
-      btn.textContent = 'Close';
+  const btn = document.createElement('button');
+  btn.textContent = 'Close';
       btn.style.marginTop = '12px';
       btn.style.padding = '6px 10px';
       btn.style.background = '#111';
       btn.style.color = '#eee';
       btn.style.border = '1px solid #444';
       btn.style.cursor = 'pointer';
-      btn.addEventListener('click', () => { document.body.removeChild(overlay); });
+      btn.addEventListener('click', () => { 
+        try { document.body.removeChild(overlay); } catch(e){}
+        // clear modalOpen flag when closed
+        try { window._game = window._game || {}; window._game.modalOpen = false; } catch(e){}
+        // refocus input so player can keep typing without clicking
+        try { inputEl.focus(); } catch(e){}
+      });
+      // mark modal open so other systems can pause
+      try { window._game = window._game || {}; window._game.modalOpen = true; } catch(e){}
       box.appendChild(btn);
 
       overlay.appendChild(box);
@@ -1712,9 +2544,26 @@
     window._game = window._game || {};
     if (window._game._fbiCaught) return; // already handled recently
     window._game._fbiCaught = true;
+    // If player is currently connected to a remote host, force-disconnect them
+    try {
+      if (connection) {
+        appendLine('Connection severed: remote host disconnected due to FBI trace. Returning to main terminal...', 'muted');
+        connection = null;
+        try { const ps = document.querySelector('.prompt'); if (ps) ps.textContent = 'guest@l33t:~$'; } catch(e){}
+      }
+    } catch(e) {}
+    // If a hacking minigame is active, abort it and return the player to the main terminal
+    try {
+      if (typeof hackState !== 'undefined' && hackState) {
+        try { endHack(false); } catch(e){}
+        // ensure UI shows the main prompt and input is enabled
+        try { const ps = document.querySelector('.prompt'); if (ps) ps.textContent = 'guest@l33t:~$'; } catch(e){}
+        try { if (inputEl) { inputEl.disabled = false; inputEl.focus(); } } catch(e){}
+      }
+    } catch(e) {}
     // notify in terminal
     appendLine('*** ALERT: FEDERAL INVESTIGATIONS BUREAU HAS IDENTIFIED YOU ***', 'muted');
-    if (contextNote) appendLine(`Context: ${contextNote}`, 'muted');
+  if (contextNote) appendLine(`${contextNote}`, 'muted');
     appendLine('FBI tracing complete. Field agents are en route and your systems have been linked to your identity.', 'muted');
   // penalty: cut hacker score in half (round down)
   const before = Math.max(0, Math.floor(state.hackerScore));
@@ -1722,14 +2571,29 @@
   const lost = before - newScore;
   state.hackerScore = newScore;
     lastHackerScore = Math.max(lastHackerScore, state.hackerScore);
+    try { showToast(`-${lost} HACKER SCORE — FBI capture`, { type: 'danger', duration: 6000 }); } catch(e){}
     renderMeters();
-    // show modal popup with intimidating details
-    showModal('FBI NOTICE: YOU ARE UNDER ARREST', `This is an official notification from the Federal Bureau of Investigation.\n\nYou have been located, detained, and are subject to criminal prosecution under federal law. Evidence indicates involvement in unauthorized access and exfiltration of protected systems.\n\nConsequences may include long-term incarceration, seizure of equipment, and significant legal penalties.\n\nPenalty applied now: -${lost} hacker points (half of your score).\n\nThis is not a drill. Expect severe, long-term consequences.`);
+  // show modal popup with official-sounding FBI notice and penalties
+  showModal('FBI NOTICE: YOU ARE UNDER ARREST', `This is an official notification from the Federal Bureau of Investigation.\n\nThe FBI has been monitoring your online activities and has identified your involvement in unauthorized access, exfiltration of protected systems, and other federal cyber offenses. You are now the subject of a federal criminal investigation and may be prosecuted under United States law.\n\nPotential consequences include arrest, seizure of electronic devices and data, substantial fines, and imprisonment. This notice documents the initiation of enforcement actions against accounts and systems associated with your activity.\n\nAs an immediate administrative penalty in this simulation, your Download Multiplier will be reduced to zero and your Hacker Score will be reduced by 50%.\n\nThis is an official law enforcement notice. Continued unauthorized activity may result in additional charges and more severe penalties.\n\nSincerely,\nFederal Bureau of Investigation\n\nP.S. LOL — that was pathetic. Your "hack" looked like somebody smashing their forehead on a keyboard. Dont think of doing this again. We WILL catch you.`);
   // reduce immediate interest so the game doesn't re-trigger continuously: cut current FBI interest in half
   state.fbiInterest = Math.floor((state.fbiInterest || 100) / 2);
     renderMeters();
-  // reset persisted multiplier on capture
-  try { window._game.lastMultiplier = 1; } catch(e){}
+  // cheeky, humiliating follow-up from the FBI
+  try { appendLine('OFFICIAL ADDENDUM: You were laughably easy to trace. Farewell, amateur — the net was not impressed.', 'muted'); } catch(e){}
+  // reset persisted multiplier on capture: immediate subtraction by current multiplier
+  try {
+    if (window._game._deflateInterval) { clearInterval(window._game._deflateInterval); window._game._deflateInterval = null; }
+    if (hackState && hackState.multiplier && hackState.multiplier > 1) {
+      const cur = Math.max(1, hackState.multiplier || (window._game && window._game.lastMultiplier) || 1);
+      const decreaseAmount = cur;
+      hackState.multiplier = Math.max(1, cur - decreaseAmount);
+      try { window._game.lastMultiplier = Math.max(1, hackState.multiplier); } catch(e){}
+      try { showMicroToast(`-${decreaseAmount}`, { type: 'danger', duration: 1600, direction: 'left' }); } catch(e){}
+      renderMeters();
+    } else {
+      window._game.lastMultiplier = 1;
+    }
+  } catch(e){}
     // cooldown: allow next capture after 8 seconds
     // if we were hacking the FBI, end the game completely with life imprisonment modal
     if (window._game && window._game._hackingFbi) {
@@ -1743,7 +2607,7 @@
         overlay.style.left = '0'; overlay.style.top = '0'; overlay.style.width = '100%'; overlay.style.height = '100%';
         overlay.style.background = 'rgba(0,0,0,0.95)';
         overlay.style.display = 'flex'; overlay.style.alignItems = 'center'; overlay.style.justifyContent = 'center';
-        overlay.style.zIndex = 99999;
+  overlay.style.zIndex = 1100000;
         const box = document.createElement('div');
         box.style.background = '#050505';
         box.style.color = '#ffdddd';
@@ -1771,10 +2635,88 @@
   appendLine('Type \"help\" to see available commands.', 'muted');
   renderMeters();
 
+  // ensure the input is focused on initial load so player can start typing immediately
+  try { inputEl.focus(); } catch(e){}
+
+  // global click handler: if user clicks anywhere (not on inputs/buttons), refocus the command input
+  try {
+    document.addEventListener('click', (ev) => {
+      try {
+        const t = ev.target;
+        if (!t) return;
+        const tag = (t.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || t.isContentEditable || tag === 'button') return;
+        // do not steal focus when clicking inside a modal or shop
+        if (t.closest && (t.closest('#game-modal') || t.closest('.shop-modal') || t.closest('.shop-item'))) return;
+        try { inputEl.focus(); } catch(e){}
+      } catch(e){}
+    }, { capture: true });
+  } catch(e){}
+
+  // global key handler: if the shop modal is open, pressing any key closes it (unless focus is in an input)
+  try {
+    document.addEventListener('keydown', (ev) => {
+      try {
+        const active = document.activeElement;
+        const tag = (active && active.tagName) ? active.tagName.toLowerCase() : null;
+        if (tag === 'input' || tag === 'textarea' || (active && active.isContentEditable)) return;
+        const shop = document.getElementById('shop-modal');
+        if (shop) {
+          try { shop.parentNode.removeChild(shop); } catch(e){}
+          try { inputEl.focus(); } catch(e){}
+        }
+      } catch(e){}
+    }, { capture: true });
+  } catch(e){}
+
   // expose some test helpers to console for manual testing without overwriting game state
   window._game = window._game || {};
   window._game.state = state;
   window._game.addHackerPoints = function(n = 10) { state.hackerScore += n; lastHackerScore = Math.max(lastHackerScore, state.hackerScore); renderMeters(); };
-  window._game.addFbiPoints = function(n = 10) { state.fbiInterest = Math.min(100, state.fbiInterest + n); showFbiDelta(n); renderMeters(); if (state.fbiInterest >= 100) handleFbiCapture('manual increase'); };
+  window._game.addFbiPoints = function(n = 10) { state.fbiInterest = Math.min(100, state.fbiInterest + n); try { showFbiToast('+'+n, { duration: 1100 }); } catch(e){} renderMeters(); if (state.fbiInterest >= 100) handleFbiCapture('manual increase'); };
+  
+  // --- Matrix background animation (subtle, bright green) ---
+  try {
+    const canvas = document.getElementById('matrix-canvas');
+    if (canvas && canvas.getContext) {
+      const ctx = canvas.getContext('2d');
+      let width = canvas.width = window.innerWidth;
+      let height = canvas.height = window.innerHeight;
+      const cols = Math.floor(width / 14);
+      const drops = new Array(cols).fill(1);
+      const letters = 'abcdefghijklmnopqrstuvwxyz0123456789@#$%^&*()[]{}<>?/\\|'.split('');
+      function resize() {
+        width = canvas.width = window.innerWidth;
+        height = canvas.height = window.innerHeight;
+        const newCols = Math.max(20, Math.floor(width / 14));
+        drops.length = newCols;
+        for (let i = 0; i < drops.length; i++) if (!drops[i]) drops[i] = Math.floor(Math.random()*height/14);
+      }
+      window.addEventListener('resize', resize);
+      function frame() {
+        // darken the canvas slightly for trailing effect
+        ctx.fillStyle = 'rgba(0,16,0,0.1)';
+        ctx.fillRect(0,0,width,height);
+        ctx.font = '14px monospace';
+        for (let i = 0; i < drops.length; i++) {
+          const x = i * 14;
+          const y = drops[i] * 14;
+          const text = letters[Math.floor(Math.random()*letters.length)];
+          // bright head
+          ctx.fillStyle = 'rgba(140,255,120,0.95)';
+          ctx.fillText(text, x, y);
+          // dim trail
+          ctx.fillStyle = 'rgba(30,120,40,0.35)';
+          ctx.fillText(text, x, y - 14);
+          drops[i] = (drops[i] > height / 14 || Math.random() > 0.995) ? 0 : drops[i] + 1;
+        }
+        requestAnimationFrame(frame);
+      }
+      // initial clear
+      ctx.fillStyle = '#001005'; ctx.fillRect(0,0,width,height);
+      requestAnimationFrame(frame);
+    }
+  } catch (e) {}
+  // Debug beat button removed: keep console helpers only
 
 })();
