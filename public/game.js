@@ -1403,14 +1403,31 @@
               try { const old = document.getElementById('badge-tooltip'); if (old && old.parentNode) old.parentNode.removeChild(old); } catch(e){}
               const t = document.createElement('div'); t.className = 'badge-tooltip centered';
               t.id = 'badge-tooltip';
-              t.innerHTML = `<strong>${u.name}</strong><div style="font-size:12px;margin-top:6px">${u.desc}</div><div style="margin-top:8px;color:#bfffd6">Cost: ${u.cost} pts</div>`;
+              // compute live cost: if repeatable, show the next dynamic cost when available
+              let costForDisplay = u.cost;
+              if (u.id === 'bandwidth') costForDisplay = (window._game && window._game.nextBandwidthCost) ? window._game.nextBandwidthCost : u.cost;
+              if (u.id === 'ghost') costForDisplay = (window._game && window._game.nextGhostCost) ? window._game.nextGhostCost : u.cost;
+              t.innerHTML = `<strong>${u.name}</strong><div style="font-size:12px;margin-top:6px">${u.desc}</div><div style="margin-top:8px;color:#bfffd6">Cost: ${costForDisplay} pts</div>`;
               document.body.appendChild(t);
               t.style.position = 'fixed';
               t.style.top = '60px';
               // allow tooltip to remove itself when the pointer leaves it
               let overTooltip = false;
               const clearTooltip = () => { try { const ex = document.getElementById('badge-tooltip'); if (ex && ex.parentNode) ex.parentNode.removeChild(ex); } catch(e){} };
-              t.addEventListener('mouseenter', () => { overTooltip = true; });
+              // helper to refresh tooltip cost display while visible
+              const refreshTooltip = () => {
+                try {
+                  const ex = document.getElementById('badge-tooltip');
+                  if (!ex) return;
+                  let costForDisplay = u.cost;
+                  if (u.id === 'bandwidth') costForDisplay = (window._game && window._game.nextBandwidthCost) ? window._game.nextBandwidthCost : u.cost;
+                  if (u.id === 'ghost') costForDisplay = (window._game && window._game.nextGhostCost) ? window._game.nextGhostCost : u.cost;
+                  const descEl = ex.querySelector('div');
+                  const costEl = ex.querySelectorAll('div')[1];
+                  if (costEl) costEl.textContent = `Cost: ${costForDisplay} pts`;
+                } catch(e){}
+              };
+              t.addEventListener('mouseenter', () => { overTooltip = true; refreshTooltip(); });
               t.addEventListener('mouseleave', () => { overTooltip = false; clearTooltip(); });
               b.addEventListener('mouseleave', () => { setTimeout(() => { if (!overTooltip) clearTooltip(); }, 80); }, { once: true });
             } catch(e) {}
