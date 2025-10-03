@@ -335,30 +335,57 @@
     // final rank at 100,000 => SUPER L337 H4CKER!!!
     const points = Math.max(0, Math.floor(hs + cur));
     let rankLabel = 'Some Nobody';
+    // compute the numeric tier index so we can persist the highest achieved tier
+    // tierIndex: 0 -> <100 (Some Nobody), 1 -> 100..999 (Script Kiddie),
+    // 2..10 -> 1k..99,999 tiers, 11 -> 100,000 (SUPER L337)
+    let tierIndex = 0;
     if (points < 100) {
-      rankLabel = 'Some Nobody';
+      rankLabel = 'Some Nobody'; tierIndex = 0;
     } else if (points < 1000) {
-      rankLabel = 'Script Kiddie';
+      rankLabel = 'Script Kiddie'; tierIndex = 1;
     } else if (points >= 100000) {
-      rankLabel = 'SUPER L337 H4CKER!!!';
+      rankLabel = 'SUPER L337 H4CKER!!!'; tierIndex = 11;
     } else {
-      // titles for each 10k tier starting at 1,000
       const tierTitles = [
-        'Dial-up Dabbler',      // 1,000 - 10,999
-        'Packet Pusher',        // 11,000 - 20,999
-        'Proxy Pixie',          // 21,000 - 30,999
-        'Null Byte Ninja',      // 31,000 - 40,999
-        'Root Rascal',          // 41,000 - 50,999
-        'Shell Slinger',        // 51,000 - 60,999
-        'Kernel King',          // 61,000 - 70,999
-        'Shadow Scripter',      // 71,000 - 80,999
-        'Neon Netrunner'        // 81,000 - 99,999
+        'Dial-up Dabbler',      // 1,000 - 10,999  -> index 2
+        'Packet Pusher',        // 11,000 - 20,999 -> index 3
+        'Proxy Pixie',          // 21,000 - 30,999 -> index 4
+        'Null Byte Ninja',      // 31,000 - 40,999 -> index 5
+        'Root Rascal',          // 41,000 - 50,999 -> index 6
+        'Shell Slinger',        // 51,000 - 60,999 -> index 7
+        'Kernel King',          // 61,000 - 70,999 -> index 8
+        'Shadow Scripter',      // 71,000 - 80,999 -> index 9
+        'Neon Netrunner'        // 81,000 - 99,999 -> index 10
       ];
       const tier = Math.floor((points - 1000) / 10000);
-      rankLabel = tierTitles[Math.max(0, Math.min(tierTitles.length - 1, tier))] || `Rank ${Math.floor(points / 1000)}`;
+      const idx = Math.max(0, Math.min(tierTitles.length - 1, tier));
+      rankLabel = tierTitles[idx] || `Rank ${Math.floor(points / 1000)}`;
+      tierIndex = 2 + idx; // map to overall tierIndex space
     }
-  const rankEl = document.getElementById('player-rank');
-    if (rankEl) rankEl.textContent = rankLabel;
+    const rankEl = document.getElementById('player-rank');
+    try {
+      window._game = window._game || {};
+      window._game.maxRankTier = window._game.maxRankTier || 0;
+      // only update the displayed rank if we've reached a strictly higher tier than before
+      if (tierIndex > (window._game.maxRankTier || 0)) {
+        window._game.maxRankTier = tierIndex;
+        if (rankEl) rankEl.textContent = rankLabel;
+      } else {
+        // preserve the previously stored top-rank label when not advancing
+        // attempt to read previously stored label from maxRankTier to reconstruct text
+        const stored = window._game.maxRankTier || 0;
+        if (stored > 0 && rankEl) {
+          // reconstruct label for the stored tier so rank never regresses visually
+          if (stored === 1) rankEl.textContent = 'Script Kiddie';
+          else if (stored >= 2 && stored <= 10) {
+            const storedTitles = ['Dial-up Dabbler','Packet Pusher','Proxy Pixie','Null Byte Ninja','Root Rascal','Shell Slinger','Kernel King','Shadow Scripter','Neon Netrunner'];
+            rankEl.textContent = storedTitles[Math.max(0, Math.min(storedTitles.length - 1, stored - 2))] || rankEl.textContent;
+          } else if (stored === 11) rankEl.textContent = 'SUPER L337 H4CKER!!!';
+        } else if (rankEl && !rankEl.textContent) {
+          rankEl.textContent = rankLabel;
+        }
+      }
+    } catch(e) { if (rankEl) rankEl.textContent = rankLabel; }
     // Rank glow/wobble intensity: non-decreasing so it only grows when player ranks up
     try {
       window._game = window._game || {};
@@ -1093,7 +1120,10 @@
     } else if (name === 'connect') {
       // gated: player must purchase unlock_connect before using connect
       const hasConnect = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_connect')) ? true : false;
-      if (!hasConnect) { appendLine('Unknown command: ' + name, 'muted'); appendLine("Type 'help' to see available commands.", 'muted'); return; }
+      // allow connecting to the FBI if the FBI host has been hacked (fbiOwned flag)
+      const requestedIsFbi = args && args[0] && String(args[0]).toLowerCase().includes('fbi');
+      const allowFbiConnect = requestedIsFbi && (window._game && window._game.fbiOwned);
+      if (!hasConnect && !allowFbiConnect) { appendLine('Unknown command: ' + name, 'muted'); appendLine("Type 'help' to see available commands.", 'muted'); return; }
       if (args.length === 0) {
         appendLine('Usage: connect <ip|hostname>', 'muted');
         return;
@@ -1112,6 +1142,16 @@
   const user = pickRandomUser();
       connection = { target, user, domain };
       appendLine('Connected to ' + target, 'muted');
+      // if this connection is to the hacked FBI, trigger the ultimate win sequence and end the game
+      try {
+        const hostCheck = (hostForPrompt || '').toLowerCase();
+        if (hostCheck.includes('fbi') || (window._game && window._game.fbiOwned && target && target.toLowerCase().includes('fbi'))) {
+          try { window._game._gameOver = true; } catch(e){}
+          try { inputEl.disabled = true; } catch(e){}
+          try { showUltimateWin(); } catch(e){}
+          return;
+        }
+      } catch(e) {}
   // connecting to a remote host increases FBI interest slightly
   state.fbiInterest = Math.min(100, (state.fbiInterest || 0) + 5);
   renderMeters();
@@ -2449,6 +2489,13 @@
       // mark this as owned (persisted)
       window._game.owned = window._game.owned || [];
       window._game.owned.push(hackState.target);
+      // if the hacked host is the FBI, persist a special flag so connect can trigger the win
+      try {
+        const hostLower = (host || '').toLowerCase();
+        if (hostLower.includes('fbi')) {
+          window._game.fbiOwned = true;
+        }
+      } catch (e) {}
       // remove from scan history
       window._game.scanHistory = hist.filter(e => e !== hackState.target);
   // show success lines as floating toasts instead of cluttering terminal
