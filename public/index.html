@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Super l337 Hacker</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div id="app">
+      <div id="left-panel" class="side-panel">
+        <h2>HACKER SCORE</h2>
+        <div id="score-big" class="score-big">0</div>
+    <div id="score-mult" class="score-mult">Multiplier: x1</div>
+      </div>
+
+      <div id="main" class="main-area">
+        <div id="terminal" class="terminal">
+          <div id="banner-cta" class="banner-cta" aria-hidden="true"></div>
+          <div id="output" class="output" aria-live="polite"></div>
+          <div id="minigame" class="minigame" aria-hidden="true"></div>
+          <div class="input-line">
+            <span class="prompt">guest@l33t:~$</span>
+            <input id="cmd-input" class="cmd-input" autocomplete="off" autofocus />
+          </div>
+        </div>
+        <div id="player-rank-holder" class="player-rank-holder">
+          <div id="player-rank" class="player-rank">Script Kiddie</div>
+        </div>
+      </div>
+
+      <div id="right-panel" class="side-panel">
+        <h2>FBI INTEREST</h2>
+        <div class="meter">
+          <div id="fbi-fill" class="meter-fill fbi" style="height:0%"></div>
+        </div>
+        <div id="fbi-value" class="meter-label">0</div>
+      </div>
+    </div>
+
+    <script src="game.js"></script>
+  </body>
+</html>
