@@ -143,8 +143,8 @@ body{
 .shop-button:hover{ box-shadow:0 12px 28px rgba(0,255,120,0.09) }
 
 /* locked badge styling */
-.badge.locked{ filter:grayscale(90%) opacity(0.36); cursor:pointer; box-shadow:none; border:1px solid rgba(255,255,255,0.02); }
-.badge.locked .label{ color:rgba(4,48,40,0.35) }
+.badge.locked{ filter: grayscale(90%); opacity: 0.36; cursor:pointer; box-shadow:none; border:1px solid rgba(255,255,255,0.02); background:linear-gradient(180deg,#f4f5f6,#eaebec); }
+.badge.locked .label{ color:rgba(4,48,40,0.45) }
 
 /* when affordable but not owned, make the badge solid grey (no transparency) */
 
@@ -204,12 +204,28 @@ body{
   font-family:var(--mono);
   font-size:13px;
   color:#041018;
-  background:linear-gradient(180deg,#eaffef,#bfffd6);
-  box-shadow:0 8px 30px rgba(0,255,140,0.06), inset 0 -6px 14px rgba(0,0,0,0.06);
-  border:1px solid rgba(0,255,140,0.12);
+  /* neutral base (no green/red) */
+  background:linear-gradient(180deg,#f4f5f6,#eaebec);
+  box-shadow:0 6px 18px rgba(0,0,0,0.18), inset 0 -4px 8px rgba(0,0,0,0.04);
+  border:1px solid rgba(255,255,255,0.04);
   position:relative;
 }
 .badge .label{ font-weight:800; color:#043; text-transform:none; margin-left:6px }
+/* Strong, explicit visual state rules to prevent accidental red styling */
+.badge{ background:linear-gradient(180deg,#f4f5f6,#eaebec) !important; border:1px solid rgba(255,255,255,0.04) !important; box-shadow:0 6px 18px rgba(0,0,0,0.18) !important; color:#041018 !important; }
+.badge.locked{ opacity:0.36 !important; filter: grayscale(90%) !important; background:linear-gradient(180deg,#f4f5f6,#eaebec) !important; }
+.badge.affordable{ opacity:1 !important; background:linear-gradient(180deg,#dfe0e3,#c9c9cc) !important; border:1px solid rgba(120,120,120,0.12) !important; box-shadow:0 6px 16px rgba(0,0,0,0.28) !important; }
+.badge.owned{ background:linear-gradient(180deg,#dfffe8,#b7ffd6) !important; border:1px solid rgba(0,180,100,0.18) !important; box-shadow:0 10px 28px rgba(0,180,100,0.06) !important; }
+/* Defensive overrides: prevent any 'danger' / red styles from applying to badges */
+.badge.danger, .badge.purchased { background:linear-gradient(180deg,#f4f5f6,#eaebec) !important; border-color:rgba(255,255,255,0.04) !important; box-shadow:0 6px 18px rgba(0,0,0,0.18) !important; color:inherit !important; }
+
+/* Prevent any accidental 'danger' class from turning badges red */
+.badge.danger, .badge.danger * {
+  background: linear-gradient(180deg,#f4f5f6,#eaebec) !important;
+  color: inherit !important;
+  border-color: rgba(255,255,255,0.04) !important;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.18) !important;
+}
 .badge .count{
   position:absolute; right:-6px; top:-6px; background:#ffef9f; color:#222; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; border:1px solid rgba(0,0,0,0.12);
 }

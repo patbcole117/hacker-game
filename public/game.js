@@ -454,6 +454,8 @@
     if (_ultimatePromptShown) return;
     if (state.hackerScore >= 100000) {
       _ultimatePromptShown = true;
+      // persistently record that the ultimate FBI hack has been unlocked
+      try { window._game = window._game || {}; window._game.ultimateUnlocked = true; } catch (e) {}
       // if a hack minigame is active, cancel it so the player can immediately run the FBI scan
       try { if (hackState) endHack(false); } catch (e) {}
       // non-blocking modal
@@ -580,11 +582,14 @@
     } else if (name === 'scan') {
       // special-case: scanning the FBI if the player was prompted/unlocked
       if (args.length > 0 && args[0].toLowerCase() === 'fbi') {
-        // ensure player has reached the ultimate threshold (safety check)
-        if (state.hackerScore < 100000) {
-          appendLine('Scan target not found.', 'muted');
-          return;
-        }
+          // ensure player has reached the ultimate threshold (safety check)
+          // once the ultimate hack is unlocked it remains available even if score later drops
+          try { window._game = window._game || {}; } catch (e) {}
+          const ultimateUnlocked = (window._game && window._game.ultimateUnlocked) ? true : false;
+          if (!ultimateUnlocked && state.hackerScore < 100000) {
+            appendLine('Scan target not found.', 'muted');
+            return;
+          }
         // produce one FBI entry with random ip and host fbi.gov
         const ip = Array.from({length:4}, ()=> Math.floor(Math.random()*254)+1).join('.');
         const host = 'fbi.gov';
@@ -743,12 +748,15 @@
         }
       })();
       } else if (name === 'hack') {
-      // ensure hack is unlocked via shop
-      const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
-      if (!hasHack) {
-  appendLine('The specified command does not exist.', 'muted');
-        return;
-      }
+        // ensure hack is unlocked via shop (BUT allow ultimate FBI target to be attacked once unlocked)
+        const hasHack = (window._game && window._game.purchases && window._game.purchases.find(p=>p.id==='unlock_hack')) ? true : false;
+        // allow hacking the FBI host if ultimate was unlocked (or score currently meets threshold)
+        const target = args && args[0] ? String(args[0]).toLowerCase() : '';
+        const ultimateAllowed = (target.includes('fbi') && ((state.hackerScore >= 100000) || (window._game && window._game.ultimateUnlocked)));
+        if (!hasHack && !ultimateAllowed) {
+          appendLine('The specified command does not exist.', 'muted');
+          return;
+        }
       if (args.length === 0) {
   appendLine('Usage: hack <ip|hostname>', 'muted');
       } else {
